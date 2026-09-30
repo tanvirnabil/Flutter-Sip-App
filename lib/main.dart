@@ -13,7 +13,6 @@ import 'views/main_navigation_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -21,7 +20,6 @@ void main() async {
     ),
   );
 
-  // Request core VoIP microphone & notification permissions
   try {
     await [
       Permission.microphone,
@@ -29,7 +27,6 @@ void main() async {
     ].request();
   } catch (_) {}
 
-  // Check if saved SIP account exists
   final savedAccount = await SecureStorageService.getAccount();
 
   runApp(

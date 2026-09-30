@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.auravoip.aura_voip"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
