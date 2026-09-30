@@ -60,3 +60,4 @@ class SipAccount {
   String toJson() => json.encode(toMap());
   factory SipAccount.fromJson(String source) => SipAccount.fromMap(json.decode(source));
 }
+

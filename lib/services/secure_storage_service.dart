@@ -42,3 +42,4 @@ class SecureStorageService {
     return value == 'true';
   }
 }
+

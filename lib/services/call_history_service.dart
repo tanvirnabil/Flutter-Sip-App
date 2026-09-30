@@ -73,3 +73,4 @@ class CallHistoryService {
     return await db.delete('call_logs');
   }
 }
+

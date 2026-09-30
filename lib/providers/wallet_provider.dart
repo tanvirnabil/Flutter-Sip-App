@@ -55,3 +55,4 @@ class WalletProvider extends ChangeNotifier {
     return true;
   }
 }
+

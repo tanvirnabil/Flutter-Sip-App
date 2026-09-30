@@ -52,3 +52,4 @@ class HistoryProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+

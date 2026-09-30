@@ -30,3 +30,4 @@ class AppColors {
   static const Color inCallControlActive = Color(0xFFFFFFFF);
   static const Color inCallTextMuted = Color(0x99FFFFFF);
 }
+

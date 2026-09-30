@@ -14,3 +14,4 @@ class AppTypography {
   static const TextStyle dialLetters = TextStyle(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 2.0);
   static const TextStyle dialedNumberDisplay = TextStyle(fontSize: 34, fontWeight: FontWeight.w400, letterSpacing: 1.0);
 }
+

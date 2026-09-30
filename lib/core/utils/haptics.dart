@@ -6,3 +6,4 @@ class Haptics {
   static void heavy() => HapticFeedback.heavyImpact();
   static void selection() => HapticFeedback.selectionClick();
 }
+
