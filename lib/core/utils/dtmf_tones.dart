@@ -1,8 +1,7 @@
-import 'package:flutter/services.dart';
+import '../../services/dtmf_audio_service.dart';
 
 class DtmfPlayer {
   static void playTone(String digit) {
-    SystemSound.play(SystemSoundType.click);
+    DtmfAudioService().playTone(digit);
   }
 }
-

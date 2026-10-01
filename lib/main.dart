@@ -3,12 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_provider.dart';
+import 'providers/contacts_provider.dart';
 import 'providers/sip_provider.dart';
 import 'providers/history_provider.dart';
 import 'providers/wallet_provider.dart';
+import 'services/background_service.dart';
+import 'services/dtmf_audio_service.dart';
+import 'services/ringtone_service.dart';
 import 'services/secure_storage_service.dart';
-import 'views/auth/sip_login_screen.dart';
-import 'views/main_navigation_screen.dart';
+import 'views/splash/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +23,11 @@ void main() async {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+
+  // Initialize background services and audio systems
+  await BackgroundService().init();
+  await DtmfAudioService().init();
+  await RingtoneService().init();
 
   try {
     await [
@@ -32,8 +41,10 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => SipProvider()),
         ChangeNotifierProvider(create: (_) => HistoryProvider()),
+        ChangeNotifierProvider(create: (_) => ContactsProvider()),
         ChangeNotifierProvider(create: (_) => WalletProvider()),
       ],
       child: AuraVoipApp(hasSavedAccount: savedAccount != null),
@@ -48,14 +59,15 @@ class AuraVoipApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProv = context.watch<ThemeProvider>();
+
     return MaterialApp(
       title: 'Aura VoIP',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      home: hasSavedAccount ? const MainNavigationScreen() : const SipLoginScreen(),
+      darkTheme: themeProv.isOled ? AppTheme.oledTheme : AppTheme.darkTheme,
+      themeMode: themeProv.flutterThemeMode,
+      home: SplashScreen(hasSavedAccount: hasSavedAccount),
     );
   }
 }
-

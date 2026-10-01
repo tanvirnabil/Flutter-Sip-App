@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,8 +9,37 @@ import '../../models/call_session_model.dart';
 import '../../providers/sip_provider.dart';
 import 'dtmf_sheet.dart';
 
-class ActiveCallScreen extends StatelessWidget {
+class ActiveCallScreen extends StatefulWidget {
   const ActiveCallScreen({super.key});
+
+  @override
+  State<ActiveCallScreen> createState() => _ActiveCallScreenState();
+}
+
+class _ActiveCallScreenState extends State<ActiveCallScreen> with TickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  late final AnimationController _waveController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _waveController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +48,7 @@ class ActiveCallScreen extends StatelessWidget {
 
     if (session == null || session.status == AuraCallStatus.ended) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (Navigator.canPop(context)) {
+        if (mounted && Navigator.canPop(context)) {
           Navigator.pop(context);
         }
       });
@@ -27,37 +57,112 @@ class ActiveCallScreen extends StatelessWidget {
 
     final isIncomingRinging = session.direction == AuraCallDirection.incoming &&
         session.status == AuraCallStatus.ringing;
+    final isActive = session.status == AuraCallStatus.active;
 
     return Scaffold(
       backgroundColor: AppColors.inCallBackground,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 40),
+            const SizedBox(height: 36),
+
+            // Caller Avatar with Apple Pulsing Radar Rings
             Center(
-              child: Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white12,
-                  border: Border.all(color: Colors.white24, width: 1.5),
-                ),
-                child: Center(
-                  child: Text(
-                    session.displayName.isNotEmpty
-                        ? session.displayName[0].toUpperCase()
-                        : '?',
-                    style: const TextStyle(
-                      fontSize: 38,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w300,
+              child: SizedBox(
+                width: 140,
+                height: 140,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (isIncomingRinging) ...[
+                      AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) {
+                          final scale1 = 1.0 + _pulseController.value * 0.45;
+                          final opacity1 = (1.0 - _pulseController.value).clamp(0.0, 1.0);
+                          return Transform.scale(
+                            scale: scale1,
+                            child: Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors.callGreen.withValues(alpha: opacity1 * 0.6),
+                                  width: 2.0,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) {
+                          final progress2 = (_pulseController.value + 0.5) % 1.0;
+                          final scale2 = 1.0 + progress2 * 0.45;
+                          final opacity2 = (1.0 - progress2).clamp(0.0, 1.0);
+                          return Transform.scale(
+                            scale: scale2,
+                            child: Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors.callGreen.withValues(alpha: opacity2 * 0.35),
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+
+                    // Avatar Circle
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.accentBlue.withValues(alpha: 0.9),
+                            const Color(0xFF5856D6),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isIncomingRinging
+                                ? AppColors.callGreen.withValues(alpha: 0.3)
+                                : Colors.black45,
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          session.displayName.isNotEmpty
+                              ? session.displayName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            fontSize: 38,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 16),
             Text(
               session.displayName,
               textAlign: TextAlign.center,
@@ -71,23 +176,50 @@ class ActiveCallScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
+
+            // Status Banner with Realtime Waveform when active
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
-                color: session.status == AuraCallStatus.active
-                    ? AppColors.callGreen.withOpacity(0.2)
+                color: isActive
+                    ? AppColors.callGreen.withValues(alpha: 0.2)
                     : Colors.white10,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                _getStatusText(session, sip),
-                style: TextStyle(
-                  color: session.status == AuraCallStatus.active
-                      ? AppColors.callGreen
-                      : Colors.white70,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isActive) ...[
+                    AnimatedBuilder(
+                      animation: _waveController,
+                      builder: (context, _) {
+                        return Row(
+                          children: List.generate(4, (i) {
+                            final h = 6.0 + 8.0 * sin((_waveController.value * pi) + (i * 0.8)).abs();
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                              width: 2.5,
+                              height: h,
+                              decoration: BoxDecoration(
+                                color: AppColors.callGreen,
+                                borderRadius: BorderRadius.circular(1.5),
+                              ),
+                            );
+                          }),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    _getStatusText(session, sip),
+                    style: TextStyle(
+                      color: isActive ? AppColors.callGreen : Colors.white70,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -95,7 +227,7 @@ class ActiveCallScreen extends StatelessWidget {
 
             if (isIncomingRinging)
               Padding(
-                padding: const EdgeInsets.only(bottom: 60, left: 40, right: 40),
+                padding: const EdgeInsets.only(bottom: 60, left: 44, right: 44),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -112,6 +244,7 @@ class ActiveCallScreen extends StatelessWidget {
                       icon: CupertinoIcons.phone_fill,
                       color: AppColors.callGreen,
                       label: 'Accept',
+                      isPulsing: true,
                       onTap: () {
                         Haptics.medium();
                         sip.answerCall();
@@ -252,14 +385,46 @@ class ActiveCallScreen extends StatelessWidget {
     }
   }
 
-  void _showDtmfSheet(BuildContext context, SipProvider sip) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DtmfKeypadSheet(
-        onKeyPressed: (key) => sip.sendDTMF(key),
-      ),
+  Widget _buildActionButton({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required VoidCallback onTap,
+    bool isPulsing = false,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.45),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 34),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
@@ -270,16 +435,17 @@ class ActiveCallScreen extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: Container(
-            width: 68,
-            height: 68,
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
+              color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.12),
               shape: BoxShape.circle,
-              color: isActive ? Colors.white : Colors.white12,
             ),
             child: Icon(
               icon,
@@ -291,41 +457,21 @@ class ActiveCallScreen extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white70,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.75),
             fontSize: 13,
-            fontWeight: FontWeight.w400,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color color,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return Column(
-      children: [
-        InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 34),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-        ),
-      ],
+  void _showDtmfSheet(BuildContext context, SipProvider sip) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => DtmfKeypadSheet(onKeyPressed: (digit) => sip.sendDTMF(digit)),
     );
   }
 }
-

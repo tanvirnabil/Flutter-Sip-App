@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:logger/logger.dart';
 import 'package:sip_ua/sip_ua.dart';
 import '../models/sip_account.dart';
 import '../models/call_session_model.dart';
 import 'audio_routing_service.dart';
+import 'background_service.dart';
 import 'callkit_service.dart';
 
 enum SipConnectionStatus {
@@ -36,9 +38,15 @@ class SipService implements SipUaHelperListener {
   String _statusMessage = 'Disconnected';
 
   final List<SipServiceListener> _listeners = [];
+  Timer? _keepAliveTimer;
+  Timer? _reconnectTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isAutoReconnecting = false;
 
   SipService._internal() {
     _helper.addSipUaHelperListener(this);
+    _initConnectivityListener();
+    _startKeepAliveLoop();
   }
 
   SipConnectionStatus get status => _status;
@@ -56,6 +64,58 @@ class SipService implements SipUaHelperListener {
 
   void removeListener(SipServiceListener listener) {
     _listeners.remove(listener);
+  }
+
+  void _initConnectivityListener() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      if (results.contains(ConnectivityResult.none)) {
+        _statusMessage = 'No network connection';
+        _notifyRegistrationChanged();
+      } else {
+        // Network reconnected or switched (e.g. Wi-Fi <-> Cellular)
+        if (_currentAccount != null && _status != SipConnectionStatus.registered) {
+          _triggerAutoReconnect(immediate: true);
+        } else if (_currentAccount != null && _status == SipConnectionStatus.registered) {
+          // Re-register to bind new local IP address on PBX
+          register(_currentAccount!);
+        }
+      }
+    });
+  }
+
+  void _startKeepAliveLoop() {
+    _keepAliveTimer?.cancel();
+    // 20 seconds keep-alive interval prevents NAT timeouts and keeps socket open
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
+      if (_status == SipConnectionStatus.registered && _currentAccount != null) {
+        // Keep registration fresh and refresh NAT pinhole
+        try {
+          _helper.register();
+        } catch (_) {}
+      } else if (_currentAccount != null &&
+          _status != SipConnectionStatus.registered &&
+          _status != SipConnectionStatus.connecting) {
+        // Automatically reconnect if registration was lost
+        _triggerAutoReconnect();
+      }
+    });
+  }
+
+  void _triggerAutoReconnect({bool immediate = false}) {
+    if (_isAutoReconnecting || _currentAccount == null) return;
+    _isAutoReconnecting = true;
+    _reconnectTimer?.cancel();
+
+    final delay = immediate ? Duration.zero : const Duration(seconds: 5);
+    _reconnectTimer = Timer(delay, () async {
+      _isAutoReconnecting = false;
+      if (_currentAccount != null && _status != SipConnectionStatus.registered) {
+        _status = SipConnectionStatus.connecting;
+        _statusMessage = 'Re-establishing background SIP connection...';
+        _notifyRegistrationChanged();
+        await register(_currentAccount!);
+      }
+    });
   }
 
   Future<void> register(SipAccount account) async {
@@ -80,7 +140,7 @@ class SipService implements SipUaHelperListener {
       settings.webSocketUrl = socketUrl.isNotEmpty ? socketUrl : 'ws://${account.domain}:${account.port}/ws';
       settings.webSocketSettings.allowBadCertificate = true;
     } else {
-      // Standard SIP mode (UDP/TCP Port 5060 - Zoiper / PortSIP compatible)
+      // Standard SIP mode (UDP/TCP Port 5060)
       settings.transportType = TransportType.TCP;
       settings.host = account.domain;
       settings.port = account.port.toString();
@@ -98,11 +158,13 @@ class SipService implements SipUaHelperListener {
 
   Future<void> unregister() async {
     try {
+      _reconnectTimer?.cancel();
       await _helper.unregister(true);
       _helper.stop();
       _status = SipConnectionStatus.disconnected;
       _statusMessage = 'Disconnected';
       _currentAccount = null;
+      await BackgroundService().stopService();
       _notifyRegistrationChanged();
     } catch (_) {}
   }
@@ -197,6 +259,8 @@ class SipService implements SipUaHelperListener {
       case RegistrationStateEnum.REGISTERED:
         _status = SipConnectionStatus.registered;
         _statusMessage = 'Connected & Registered';
+        BackgroundService().startService(accountExtension: _currentAccount?.extension);
+        BackgroundService().updateStatus('Ext ${_currentAccount?.extension ?? ""} • Registered');
         break;
       case RegistrationStateEnum.UNREGISTERED:
         _status = SipConnectionStatus.disconnected;
@@ -204,7 +268,18 @@ class SipService implements SipUaHelperListener {
         break;
       case RegistrationStateEnum.REGISTRATION_FAILED:
         _status = SipConnectionStatus.registrationFailed;
-        _statusMessage = state.cause?.toString() ?? 'Registration failed';
+        final causeStr = state.cause?.toString().toLowerCase() ?? '';
+        if (causeStr.contains('403') || causeStr.contains('forbidden')) {
+          _statusMessage = 'Authentication Failed (403): Check extension password.';
+        } else if (causeStr.contains('404') || causeStr.contains('not found')) {
+          _statusMessage = 'Extension Not Found (404): Check extension number.';
+        } else if (causeStr.contains('408') || causeStr.contains('timeout')) {
+          _statusMessage = 'PBX Timeout (408): sip.ranksitt.net unreachable.';
+        } else if (causeStr.contains('503') || causeStr.contains('service unavailable')) {
+          _statusMessage = 'PBX Unavailable (503): PBX temporarily down.';
+        } else {
+          _statusMessage = state.cause?.toString() ?? 'Registration failed';
+        }
         break;
       case RegistrationStateEnum.NONE:
       default:
@@ -299,12 +374,16 @@ class SipService implements SipUaHelperListener {
   void transportStateChanged(TransportState state) {
     if (state.state == TransportStateEnum.CONNECTED) {
       _status = SipConnectionStatus.connected;
-      _statusMessage = 'WebSocket Connected';
+      _statusMessage = 'PBX Transport Connected';
       _notifyRegistrationChanged();
     } else if (state.state == TransportStateEnum.DISCONNECTED) {
       _status = SipConnectionStatus.disconnected;
       _statusMessage = 'Transport Disconnected';
       _notifyRegistrationChanged();
+      // Auto-reconnect watchdog triggers if transport dropped
+      if (_currentAccount != null) {
+        _triggerAutoReconnect();
+      }
     }
   }
 
@@ -330,5 +409,10 @@ class SipService implements SipUaHelperListener {
       }
     }
   }
-}
 
+  void dispose() {
+    _keepAliveTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _connectivitySubscription?.cancel();
+  }
+}

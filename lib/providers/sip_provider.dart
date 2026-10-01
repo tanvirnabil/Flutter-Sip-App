@@ -7,6 +7,7 @@ import '../models/call_log_item.dart';
 import '../services/sip_service.dart';
 import '../services/call_history_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/background_service.dart';
 
 class SipProvider extends ChangeNotifier implements SipServiceListener {
   final SipService _sipService = SipService();
@@ -57,6 +58,7 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
         final name = event.eventName.toUpperCase();
         if (name.contains('ACCEPT')) {
           answerCall();
+          BackgroundService.launchApp();
         } else if (name.contains('DECLINE') || name.contains('ENDED')) {
           hangup();
         }

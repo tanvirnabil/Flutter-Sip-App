@@ -1,5 +1,7 @@
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'background_service.dart';
+import 'ringtone_service.dart';
 
 class CallKitService {
   static Future<void> showIncomingCall({
@@ -7,6 +9,14 @@ class CallKitService {
     required String callerName,
     required String callerNumber,
   }) async {
+    // 1. Wake the screen immediately even if phone is sleeping
+    BackgroundService.wakeScreen();
+
+    final selectedRingtone = RingtoneService().selectedRingtoneId;
+    final ringtonePath = selectedRingtone == 'system_default'
+        ? 'system_ringtone_default'
+        : selectedRingtone;
+
     final params = CallKitParams(
       id: uuid,
       nameCaller: callerName.isNotEmpty ? callerName : callerNumber,
@@ -14,20 +24,22 @@ class CallKitService {
       avatar: '',
       handle: callerNumber,
       type: 0,
-      duration: 30000,
+      duration: 35000,
       extra: <String, dynamic>{'callerNumber': callerNumber},
       headers: <String, dynamic>{'platform': 'flutter'},
-      android: const AndroidParams(
+      android: AndroidParams(
         isCustomNotification: true,
         isShowLogo: false,
-        ringtonePath: 'system_ringtone_default',
-        backgroundColor: '#0955fa',
-        actionColor: '#4CAF50',
-        textColor: '#ffffff',
+        ringtonePath: ringtonePath,
+        backgroundColor: '#0F172A',
+        actionColor: '#22C55E',
+        textColor: '#FFFFFF',
         incomingCallNotificationChannelName: 'Aura VoIP Incoming Call',
         missedCallNotificationChannelName: 'Aura VoIP Missed Call',
+        isShowCallID: true,
+        isShowFullLockedScreen: true,
       ),
-      ios: const IOSParams(
+      ios: IOSParams(
         iconName: 'AppIcon',
         handleType: 'generic',
         supportsVideo: false,
@@ -41,7 +53,7 @@ class CallKitService {
         supportsHolding: true,
         supportsGrouping: false,
         supportsUngrouping: false,
-        ringtonePath: 'system_ringtone_default',
+        ringtonePath: ringtonePath,
       ),
     );
 
@@ -62,4 +74,3 @@ class CallKitService {
     } catch (_) {}
   }
 }
-
