@@ -42,6 +42,7 @@ class SipService implements SipUaHelperListener {
   Timer? _reconnectTimer;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _isAutoReconnecting = false;
+  bool _wasOffline = false;
 
   SipService._internal() {
     _helper.addSipUaHelperListener(this);
@@ -68,16 +69,14 @@ class SipService implements SipUaHelperListener {
 
   void _initConnectivityListener() {
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
-      if (results.contains(ConnectivityResult.none)) {
-        _statusMessage = 'No network connection';
-        _notifyRegistrationChanged();
-      } else {
-        // Network reconnected or switched (e.g. Wi-Fi <-> Cellular)
-        if (_currentAccount != null && _status != SipConnectionStatus.registered) {
+      final isOffline = results.contains(ConnectivityResult.none);
+      if (isOffline) {
+        _wasOffline = true;
+      } else if (_wasOffline) {
+        _wasOffline = false;
+        // Only reconnect if device was previously completely offline and is now back online
+        if (_currentAccount != null && !_helper.registered) {
           _triggerAutoReconnect(immediate: true);
-        } else if (_currentAccount != null && _status == SipConnectionStatus.registered) {
-          // Re-register to bind new local IP address on PBX
-          register(_currentAccount!);
         }
       }
     });
@@ -85,33 +84,28 @@ class SipService implements SipUaHelperListener {
 
   void _startKeepAliveLoop() {
     _keepAliveTimer?.cancel();
-    // 20 seconds keep-alive interval prevents NAT timeouts and keeps socket open
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 20), (timer) {
-      if (_status == SipConnectionStatus.registered && _currentAccount != null) {
-        // Keep registration fresh and refresh NAT pinhole
-        try {
-          _helper.register();
-        } catch (_) {}
-      } else if (_currentAccount != null &&
-          _status != SipConnectionStatus.registered &&
-          _status != SipConnectionStatus.connecting) {
-        // Automatically reconnect if registration was lost
+    // Watchdog timer: checks every 30s if registration dropped unexpectedly
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (_currentAccount != null &&
+          !_helper.registered &&
+          _status != SipConnectionStatus.connecting &&
+          _status != SipConnectionStatus.registered) {
         _triggerAutoReconnect();
       }
     });
   }
 
   void _triggerAutoReconnect({bool immediate = false}) {
-    if (_isAutoReconnecting || _currentAccount == null) return;
+    if (_isAutoReconnecting || _currentAccount == null || _helper.registered) return;
     _isAutoReconnecting = true;
     _reconnectTimer?.cancel();
 
-    final delay = immediate ? Duration.zero : const Duration(seconds: 5);
+    final delay = immediate ? Duration.zero : const Duration(seconds: 8);
     _reconnectTimer = Timer(delay, () async {
       _isAutoReconnecting = false;
-      if (_currentAccount != null && _status != SipConnectionStatus.registered) {
+      if (_currentAccount != null && !_helper.registered) {
         _status = SipConnectionStatus.connecting;
-        _statusMessage = 'Re-establishing background SIP connection...';
+        _statusMessage = 'Connecting to PBX...';
         _notifyRegistrationChanged();
         await register(_currentAccount!);
       }
@@ -159,6 +153,7 @@ class SipService implements SipUaHelperListener {
   Future<void> unregister() async {
     try {
       _reconnectTimer?.cancel();
+      _isAutoReconnecting = false;
       await _helper.unregister(true);
       _helper.stop();
       _status = SipConnectionStatus.disconnected;
@@ -264,7 +259,7 @@ class SipService implements SipUaHelperListener {
         break;
       case RegistrationStateEnum.UNREGISTERED:
         _status = SipConnectionStatus.disconnected;
-        _statusMessage = 'Unregistered';
+        _statusMessage = 'Disconnected';
         break;
       case RegistrationStateEnum.REGISTRATION_FAILED:
         _status = SipConnectionStatus.registrationFailed;
@@ -278,13 +273,15 @@ class SipService implements SipUaHelperListener {
         } else if (causeStr.contains('503') || causeStr.contains('service unavailable')) {
           _statusMessage = 'PBX Unavailable (503): PBX temporarily down.';
         } else {
-          _statusMessage = state.cause?.toString() ?? 'Registration failed';
+          _statusMessage = 'Registration failed';
+        }
+        // Automatically retry with backoff if not a permanent auth error
+        if (_currentAccount != null && !causeStr.contains('403')) {
+          _triggerAutoReconnect();
         }
         break;
       case RegistrationStateEnum.NONE:
       default:
-        _status = SipConnectionStatus.disconnected;
-        _statusMessage = 'Idle';
         break;
     }
     _notifyRegistrationChanged();
@@ -373,16 +370,17 @@ class SipService implements SipUaHelperListener {
   @override
   void transportStateChanged(TransportState state) {
     if (state.state == TransportStateEnum.CONNECTED) {
-      _status = SipConnectionStatus.connected;
-      _statusMessage = 'PBX Transport Connected';
-      _notifyRegistrationChanged();
+      // Only announce transport connected if not already in fully registered state
+      if (_status != SipConnectionStatus.registered) {
+        _status = SipConnectionStatus.connected;
+        _statusMessage = 'PBX Transport Connected';
+        _notifyRegistrationChanged();
+      }
     } else if (state.state == TransportStateEnum.DISCONNECTED) {
-      _status = SipConnectionStatus.disconnected;
-      _statusMessage = 'Transport Disconnected';
-      _notifyRegistrationChanged();
-      // Auto-reconnect watchdog triggers if transport dropped
-      if (_currentAccount != null) {
-        _triggerAutoReconnect();
+      // Allow sip_ua internal socket recovery to reconnect without thrashing registered UI status
+      if (_status == SipConnectionStatus.connecting) {
+        _statusMessage = 'Connecting to PBX...';
+        _notifyRegistrationChanged();
       }
     }
   }
