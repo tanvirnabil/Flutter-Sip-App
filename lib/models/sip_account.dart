@@ -15,9 +15,9 @@ class SipAccount {
     required this.password,
     required this.domain,
     this.displayName = '',
-    this.port = 8089,
-    this.isWebRtc = true,
-    this.transport = 'wss',
+    this.port = 5060,
+    this.isWebRtc = false,
+    this.transport = 'udp',
     this.stunServer = 'stun:stun.l.google.com:19302',
   });
 
@@ -50,9 +50,9 @@ class SipAccount {
       password: map['password'] ?? '',
       domain: map['domain'] ?? '',
       displayName: map['displayName'] ?? '',
-      port: map['port'] is int ? map['port'] : int.tryParse(map['port']?.toString() ?? '8089') ?? 8089,
+      port: map['port'] is int ? map['port'] : int.tryParse(map['port']?.toString() ?? '5060') ?? 5060,
       isWebRtc: map['isWebRtc'] == true || map['isWebRtc'] == 1,
-      transport: map['transport'] ?? 'wss',
+      transport: map['transport'] ?? 'udp',
       stunServer: map['stunServer'] ?? 'stun:stun.l.google.com:19302',
     );
   }

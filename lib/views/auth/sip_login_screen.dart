@@ -23,13 +23,13 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
   final _passwordController = TextEditingController();
   final _domainController = TextEditingController();
   final _displayNameController = TextEditingController();
-  final _portController = TextEditingController(text: '8089');
+  final _portController = TextEditingController(text: '5060');
   final _stunController = TextEditingController(text: 'stun:stun.l.google.com:19302');
 
   bool _obscurePassword = true;
   bool _showAdvanced = false;
-  bool _isWebRtc = true;
-  String _transport = 'wss';
+  bool _isWebRtc = false;
+  String _transport = 'udp';
 
   @override
   void initState() {
@@ -210,6 +210,58 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
                       prefixIcon: Icon(CupertinoIcons.tag),
                     ),
                   ),
+                  const SizedBox(height: 16),
+
+                  _buildInputLabel('CONNECTION PROTOCOL', isDark),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkSurfaceSecondary : AppColors.lightSurfaceSecondary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: CupertinoSlidingSegmentedControl<bool>(
+                      groupValue: _isWebRtc,
+                      backgroundColor: Colors.transparent,
+                      thumbColor: AppColors.accentBlue,
+                      children: {
+                        false: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          child: Text(
+                            'Standard SIP (UDP/TCP)',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: !_isWebRtc ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                          ),
+                        ),
+                        true: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          child: Text(
+                            'WebRTC (WebSocket)',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _isWebRtc ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                          ),
+                        ),
+                      },
+                      onValueChanged: (val) {
+                        if (val != null) {
+                          Haptics.selection();
+                          setState(() {
+                            _isWebRtc = val;
+                            _portController.text = val ? '8089' : '5060';
+                            _transport = val ? 'wss' : 'udp';
+                          });
+                        }
+                      },
+                    ),
+                  ),
                   const SizedBox(height: 20),
 
                   GestureDetector(
@@ -320,10 +372,10 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
                                           isExpanded: true,
                                           dropdownColor: isDark ? AppColors.darkSurface : Colors.white,
                                           items: const [
-                                            DropdownMenuItem(value: 'wss', child: Text('WSS (Secure)')),
-                                            DropdownMenuItem(value: 'ws', child: Text('WS (Plain)')),
-                                            DropdownMenuItem(value: 'tcp', child: Text('TCP')),
-                                            DropdownMenuItem(value: 'udp', child: Text('UDP')),
+                                            DropdownMenuItem(value: 'udp', child: Text('UDP (Standard)')),
+                                            DropdownMenuItem(value: 'tcp', child: Text('TCP (Standard)')),
+                                            DropdownMenuItem(value: 'wss', child: Text('WSS (Secure WebRTC)')),
+                                            DropdownMenuItem(value: 'ws', child: Text('WS (Plain WebRTC)')),
                                           ],
                                           onChanged: (val) {
                                             if (val != null) setState(() => _transport = val);

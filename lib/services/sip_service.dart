@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:logger/logger.dart';
 import 'package:sip_ua/sip_ua.dart';
 import '../models/sip_account.dart';
 import '../models/call_session_model.dart';
@@ -22,7 +23,12 @@ class SipService implements SipUaHelperListener {
   static final SipService _instance = SipService._internal();
   factory SipService() => _instance;
 
-  final SIPUAHelper _helper = SIPUAHelper();
+  final SIPUAHelper _helper = SIPUAHelper(
+    customLogger: Logger(
+      printer: SimplePrinter(printTime: false),
+      level: Level.warning,
+    ),
+  );
   SipAccount? _currentAccount;
   Call? _activeCall;
   CallSessionModel? _currentSession;
@@ -55,22 +61,31 @@ class SipService implements SipUaHelperListener {
   Future<void> register(SipAccount account) async {
     _currentAccount = account;
     _status = SipConnectionStatus.connecting;
-    _statusMessage = 'Connecting to PBX...';
+    _statusMessage = 'Connecting to PBX (${account.isWebRtc ? "WebRTC" : "Standard SIP 5060"})...';
     _notifyRegistrationChanged();
 
     final settings = UaSettings();
-    final socketUrl = account.resolvedWebSocketUrl;
-
-    settings.webSocketUrl = socketUrl.isNotEmpty ? socketUrl : 'ws://${account.domain}:${account.port}/ws';
-    settings.webSocketSettings.allowBadCertificate = true;
     settings.uri = account.sipUri;
     settings.authorizationUser = account.extension;
     settings.password = account.password;
     settings.displayName = account.displayName.isNotEmpty ? account.displayName : account.extension;
-    settings.transportType = TransportType.WS;
     settings.iceServers = [
       {'urls': account.stunServer},
     ];
+
+    if (account.isWebRtc) {
+      // WebRTC mode (Asterisk WSS / FreePBX WebRTC)
+      settings.transportType = TransportType.WS;
+      final socketUrl = account.resolvedWebSocketUrl;
+      settings.webSocketUrl = socketUrl.isNotEmpty ? socketUrl : 'ws://${account.domain}:${account.port}/ws';
+      settings.webSocketSettings.allowBadCertificate = true;
+    } else {
+      // Standard SIP mode (UDP/TCP Port 5060 - Zoiper / PortSIP compatible)
+      settings.transportType = TransportType.TCP;
+      settings.host = account.domain;
+      settings.port = account.port.toString();
+      settings.tcpSocketSettings.allowBadCertificate = true;
+    }
 
     try {
       _helper.start(settings);
