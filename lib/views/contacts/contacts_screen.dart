@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/haptics.dart';
 import '../../models/contact_item.dart';
 import '../../providers/contacts_provider.dart';
 import '../../providers/sip_provider.dart';
@@ -27,11 +28,96 @@ class _ContactsScreenState extends State<ContactsScreen> {
     super.dispose();
   }
 
-  void _callContact(ContactItem contact) {
+  void _callContact(ContactItem contact, {bool isVideo = false}) {
+    Haptics.medium();
     final sipProvider = context.read<SipProvider>();
-    sipProvider.makeCall(contact.extension);
+    sipProvider.makeCall(contact.extension, isVideo: isVideo);
     Navigator.of(context).push(
       CupertinoPageRoute(builder: (_) => const ActiveCallScreen()),
+    );
+  }
+
+  void _showContactOptions(ContactItem contact, bool isDark) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(contact.name),
+        message: Text('Ext / Number: ${contact.extension}'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _callContact(contact, isVideo: false);
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.phone_fill, color: AppColors.callGreen, size: 20),
+                SizedBox(width: 8),
+                Text('Voice Call (SIP)'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _callContact(contact, isVideo: true);
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.video_camera_solid, color: AppColors.accentBlue, size: 22),
+                SizedBox(width: 8),
+                Text('Video Call (WebRTC)'),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<ContactsProvider>().toggleFavorite(contact);
+            },
+            child: Text(contact.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'),
+          ),
+          if (!contact.isDeviceContact)
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.pop(ctx);
+                _confirmDeleteContact(contact);
+              },
+              child: const Text('Delete Contact'),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteContact(ContactItem contact) {
+    showCupertinoDialog(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Delete Contact'),
+        content: Text('Are you sure you want to remove "${contact.name}" from your contacts?'),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text('Delete'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<ContactsProvider>().deleteContact(contact.id);
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -136,7 +222,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Directory'),
+        title: const Text('Contacts'),
         centerTitle: false,
         actions: [
           IconButton(
@@ -149,18 +235,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Apple-style Search Bar
+            // Search Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: CupertinoSearchTextField(
                 controller: _searchController,
-                placeholder: 'Search name or extension...',
+                placeholder: 'Search contacts...',
                 style: TextStyle(color: isDark ? Colors.white : Colors.black),
                 onChanged: (val) => contactsProv.setSearchQuery(val),
               ),
             ),
 
-            // Segmented Filter: All vs. Favorites
+            // 3-way Segmented Filter: App | Phone Contacts | Favorites
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: SizedBox(
@@ -171,20 +257,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     0: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Text(
-                        'All (${contactsProv.allContacts.length})',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        'App (${contactsProv.appContacts.length})',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                       ),
                     ),
                     1: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Phone (${contactsProv.deviceContacts.length})',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                      ),
+                    ),
+                    2: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(CupertinoIcons.star_fill, size: 14, color: AppColors.warningOrange),
+                          const Icon(CupertinoIcons.star_fill, size: 13, color: AppColors.warningOrange),
                           const SizedBox(width: 4),
                           Text(
                             'Favorites (${contactsProv.favorites.length})',
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
                           ),
                         ],
                       ),
@@ -199,84 +292,128 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
             const SizedBox(height: 6),
 
-            // Contact List with Right Alphabet Fast Index
+            // Contacts List
             Expanded(
               child: contactsProv.isLoading
                   ? const Center(child: CupertinoActivityIndicator())
-                  : contacts.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                contactsProv.selectedSegment == 1
-                                    ? CupertinoIcons.star
-                                    : CupertinoIcons.person_2,
-                                size: 54,
-                                color: Colors.grey.withValues(alpha: 0.4),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                contactsProv.selectedSegment == 1
-                                    ? 'No favorites yet'
-                                    : 'No contacts found',
-                                style: const TextStyle(fontSize: 16, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        )
-                      : Stack(
-                          children: [
-                            ListView.separated(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.only(left: 16, right: 36, bottom: 20),
-                              itemCount: contacts.length,
-                              separatorBuilder: (context, index) => Divider(
-                                height: 1,
-                                indent: 64,
-                                color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
-                              ),
-                              itemBuilder: (context, index) {
-                                final contact = contacts[index];
-                                return _buildContactTile(contact, isDark);
-                              },
-                            ),
+                  : (contactsProv.selectedSegment == 1 &&
+                          !contactsProv.hasDevicePermission &&
+                          contactsProv.deviceContacts.isEmpty)
+                      ? _buildPermissionPrompt(isDark, contactsProv)
+                      : contacts.isEmpty
+                          ? _buildEmptyState(contactsProv)
+                          : Stack(
+                              children: [
+                                ListView.separated(
+                                  controller: _scrollController,
+                                  padding: const EdgeInsets.only(left: 16, right: 36, bottom: 20),
+                                  itemCount: contacts.length,
+                                  separatorBuilder: (context, index) => Divider(
+                                    height: 1,
+                                    indent: 64,
+                                    color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final contact = contacts[index];
+                                    return _buildContactTile(contact, isDark);
+                                  },
+                                ),
 
-                            // Right-side A-Z Jump Bar
-                            Positioned(
-                              top: 0,
-                              bottom: 0,
-                              right: 4,
-                              child: Center(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: _alphabet.map((letter) {
-                                      return GestureDetector(
-                                        onTap: () => _jumpToLetter(letter, contacts),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 4),
-                                          child: Text(
-                                            letter,
-                                            style: const TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w700,
-                                              color: AppColors.accentBlue,
+                                // Right-side A-Z Jump Bar
+                                Positioned(
+                                  top: 0,
+                                  bottom: 0,
+                                  right: 4,
+                                  child: Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 4),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: _alphabet.map((letter) {
+                                          return GestureDetector(
+                                            onTap: () => _jumpToLetter(letter, contacts),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 4),
+                                              child: Text(
+                                                letter,
+                                                style: const TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: AppColors.accentBlue,
+                                                ),
+                                              ),
                                             ),
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPermissionPrompt(bool isDark, ContactsProvider prov) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(CupertinoIcons.person_crop_circle_badge_exclam, size: 54, color: AppColors.accentBlue),
+            const SizedBox(height: 16),
+            const Text(
+              'Sync Phone Contacts',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Allow Aura VoIP to access your contacts to call people directly from your phone address book.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.black54),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => prov.loadDeviceContacts(requestPermission: true),
+              child: const Text('Allow Contacts Access'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ContactsProvider prov) {
+    String message = 'No contacts added yet';
+    if (prov.selectedSegment == 1) message = 'No contacts found on phone';
+    if (prov.selectedSegment == 2) message = 'No favorite contacts yet';
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            prov.selectedSegment == 2
+                ? CupertinoIcons.star
+                : CupertinoIcons.person_2,
+            size: 54,
+            color: Colors.grey.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 12),
+          Text(message, style: const TextStyle(fontSize: 16, color: Colors.grey)),
+          if (prov.selectedSegment == 0) ...[
+            const SizedBox(height: 12),
+            CupertinoButton(
+              onPressed: _showAddContactSheet,
+              child: const Text('Add Your First Contact'),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -294,7 +431,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     return Dismissible(
       key: Key(contact.id),
-      direction: DismissDirection.endToStart,
+      direction: contact.isDeviceContact ? DismissDirection.none : DismissDirection.endToStart,
       background: Container(
         color: AppColors.endCallRed,
         alignment: Alignment.centerRight,
@@ -306,13 +443,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
       },
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+        onTap: () => _showContactOptions(contact, isDark),
         leading: Container(
-          width: 46,
-          height: 46,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                AppColors.accentBlue.withValues(alpha: 0.8),
+                contact.isDeviceContact
+                    ? const Color(0xFF34C759)
+                    : AppColors.accentBlue,
                 const Color(0xFF5856D6),
               ],
               begin: Alignment.topLeft,
@@ -326,7 +466,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
-              fontSize: 16,
+              fontSize: 15,
             ),
           ),
         ),
@@ -347,7 +487,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                'Ext ${contact.extension}',
+                contact.isDeviceContact ? contact.extension : 'Ext ${contact.extension}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -355,18 +495,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
               ),
             ),
-            if (contact.email != null && contact.email!.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  contact.email!,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white38 : Colors.black45,
-                  ),
-                ),
-              ),
+            if (contact.isDeviceContact) ...[
+              const SizedBox(width: 6),
+              const Icon(CupertinoIcons.device_phone_portrait, size: 12, color: Colors.grey),
             ],
           ],
         ),
@@ -376,24 +507,38 @@ class _ContactsScreenState extends State<ContactsScreen> {
             IconButton(
               icon: Icon(
                 contact.isFavorite ? CupertinoIcons.star_fill : CupertinoIcons.star,
-                color: contact.isFavorite ? AppColors.warningOrange : Colors.grey.withValues(alpha: 0.5),
-                size: 22,
+                color: contact.isFavorite ? AppColors.warningOrange : Colors.grey.withValues(alpha: 0.4),
+                size: 20,
               ),
               onPressed: () {
                 context.read<ContactsProvider>().toggleFavorite(contact);
               },
             ),
+            // Video Call Button
             IconButton(
               icon: Container(
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.accentBlue.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(CupertinoIcons.video_camera_solid, color: AppColors.accentBlue, size: 18),
+              ),
+              onPressed: () => _callContact(contact, isVideo: true),
+            ),
+            // Voice Call Button
+            IconButton(
+              icon: Container(
+                width: 34,
+                height: 34,
                 decoration: const BoxDecoration(
                   color: AppColors.callGreen,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(CupertinoIcons.phone_fill, color: Colors.white, size: 18),
+                child: const Icon(CupertinoIcons.phone_fill, color: Colors.white, size: 16),
               ),
-              onPressed: () => _callContact(contact),
+              onPressed: () => _callContact(contact, isVideo: false),
             ),
           ],
         ),

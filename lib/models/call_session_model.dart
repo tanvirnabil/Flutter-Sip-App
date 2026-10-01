@@ -19,6 +19,8 @@ class CallSessionModel {
   final bool isMuted;
   final bool isSpeaker;
   final bool isOnHold;
+  final bool isVideo;
+  final bool isLocalCameraEnabled;
   final DateTime? startedAt;
 
   const CallSessionModel({
@@ -31,6 +33,8 @@ class CallSessionModel {
     this.isMuted = false,
     this.isSpeaker = false,
     this.isOnHold = false,
+    this.isVideo = false,
+    this.isLocalCameraEnabled = true,
     this.startedAt,
   });
 
@@ -52,6 +56,8 @@ class CallSessionModel {
     bool? isMuted,
     bool? isSpeaker,
     bool? isOnHold,
+    bool? isVideo,
+    bool? isLocalCameraEnabled,
     DateTime? startedAt,
   }) {
     return CallSessionModel(
@@ -64,8 +70,9 @@ class CallSessionModel {
       isMuted: isMuted ?? this.isMuted,
       isSpeaker: isSpeaker ?? this.isSpeaker,
       isOnHold: isOnHold ?? this.isOnHold,
+      isVideo: isVideo ?? this.isVideo,
+      isLocalCameraEnabled: isLocalCameraEnabled ?? this.isLocalCameraEnabled,
       startedAt: startedAt ?? this.startedAt,
     );
   }
 }
-

@@ -7,8 +7,10 @@ import '../../core/theme/theme_provider.dart';
 import '../../core/utils/haptics.dart';
 import '../../providers/sip_provider.dart';
 import '../../services/background_service.dart';
+import '../../services/call_recording_service.dart';
 import '../../services/dtmf_audio_service.dart';
 import '../../services/ringtone_service.dart';
+import '../../services/video_settings_service.dart';
 import '../auth/sip_login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -27,9 +29,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _pingResult;
   bool _isPinging = false;
 
+  bool _autoRecord = false;
+  bool _videoEnabled = true;
+
   final DtmfAudioService _dtmfService = DtmfAudioService();
   final RingtoneService _ringtoneService = RingtoneService();
   final BackgroundService _backgroundService = BackgroundService();
+  final CallRecordingService _recordingService = CallRecordingService();
+  final VideoSettingsService _videoService = VideoSettingsService();
 
   @override
   void initState() {
@@ -40,11 +47,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     await _dtmfService.init();
     await _ringtoneService.init();
+    await _recordingService.init();
+    await _videoService.init();
     final batteryExempt = await _backgroundService.checkBatteryOptimization();
     if (mounted) {
       setState(() {
         _dtmfSoundEnabled = _dtmfService.isEnabled;
         _isIgnoringBattery = batteryExempt;
+        _autoRecord = _recordingService.isAutoRecordEnabled;
+        _videoEnabled = _videoService.isVideoEnabled;
       });
     }
   }
@@ -320,6 +331,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 22),
 
+          // CALL RECORDING (NEW FEATURE)
+          _buildSectionHeader('CALL RECORDING & RECENT AUDIO'),
+          _buildCard(
+            isDark: isDark,
+            children: [
+              SwitchListTile.adaptive(
+                title: const Text('Auto-Record Calls'),
+                subtitle: const Text('Automatically record calls and listen to audio in Recents'),
+                value: _autoRecord,
+                activeTrackColor: AppColors.accentBlue,
+                onChanged: (val) async {
+                  Haptics.selection();
+                  setState(() => _autoRecord = val);
+                  await _recordingService.setAutoRecordEnabled(val);
+                },
+              ),
+              _buildDivider(isDark),
+              const ListTile(
+                title: Text('Storage & Privacy Policy'),
+                subtitle: Text('Recordings are stored only on your local device. Deleting a recent call permanently deletes its audio file.'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 22),
+
+          // VIDEO CALLING & MEDIA (NEW FEATURE)
+          _buildSectionHeader('VIDEO CALLING & MEDIA'),
+          _buildCard(
+            isDark: isDark,
+            children: [
+              SwitchListTile.adaptive(
+                title: const Text('Enable Video Calling'),
+                subtitle: const Text('Allow SIP/WebRTC camera calls and video SDP negotiation'),
+                value: _videoEnabled,
+                activeTrackColor: AppColors.accentBlue,
+                onChanged: (val) async {
+                  Haptics.selection();
+                  setState(() => _videoEnabled = val);
+                  await _videoService.setVideoEnabled(val);
+                },
+              ),
+              if (_videoEnabled) ...[
+                _buildDivider(isDark),
+                ListTile(
+                  title: const Text('Preferred Video Codec'),
+                  subtitle: Text(_videoService.preferredCodec, style: const TextStyle(color: AppColors.accentBlue)),
+                  trailing: const Icon(CupertinoIcons.chevron_forward, size: 18),
+                  onTap: _showVideoCodecDialog,
+                ),
+                _buildDivider(isDark),
+                ListTile(
+                  title: const Text('Video Quality / Resolution'),
+                  subtitle: Text(_videoService.resolution, style: const TextStyle(color: AppColors.accentBlue)),
+                  trailing: const Icon(CupertinoIcons.chevron_forward, size: 18),
+                  onTap: _showVideoResolutionDialog,
+                ),
+                _buildDivider(isDark),
+                ListTile(
+                  title: const Text('Default Camera Facing'),
+                  subtitle: Text(_videoService.defaultCamera, style: const TextStyle(color: AppColors.accentBlue)),
+                  trailing: const Icon(CupertinoIcons.chevron_forward, size: 18),
+                  onTap: _showDefaultCameraDialog,
+                ),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 22),
+
           // SOUNDS & HAPTICS
           _buildSectionHeader('SOUNDS & AUDIO FEEDBACK'),
           _buildCard(
@@ -416,10 +497,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               _buildDivider(isDark),
               ListTile(
-                title: const Text('NAT Keep-Alive Ping'),
-                subtitle: const Text('Sends heartbeat every 20s to keep router port open'),
+                title: const Text('NAT Keep-Alive Heartbeat'),
+                subtitle: const Text('Watchdog ensures SIP socket remains active'),
                 trailing: const Text(
-                  '20s (Auto)',
+                  '30s (Auto)',
                   style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey),
                 ),
               ),
@@ -513,7 +594,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 20),
           Center(
             child: Text(
-              'Aura VoIP v1.1.0 • Enterprise SIP Edition\nBuilt for PBX ${account?.domain ?? "sip.ranksitt.net"}',
+              'Aura VoIP v1.2.0 • Enterprise SIP Edition\nBuilt for PBX ${account?.domain ?? "sip.ranksitt.net"}',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
@@ -560,6 +641,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
       height: 1,
       indent: 16,
       color: isDark ? const Color(0x22FFFFFF) : const Color(0x15000000),
+    );
+  }
+
+  void _showVideoCodecDialog() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('Select Preferred Video Codec'),
+        actions: VideoSettingsService.availableCodecs.map((c) {
+          return CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _videoService.setPreferredCodec(c);
+              if (mounted) setState(() {});
+            },
+            child: Text(c),
+          );
+        }).toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+  }
+
+  void _showVideoResolutionDialog() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('Select Video Resolution & Framerate'),
+        actions: VideoSettingsService.availableResolutions.map((r) {
+          return CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _videoService.setResolution(r);
+              if (mounted) setState(() {});
+            },
+            child: Text(r),
+          );
+        }).toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+  }
+
+  void _showDefaultCameraDialog() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('Select Default Camera'),
+        actions: VideoSettingsService.availableCameras.map((cam) {
+          return CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _videoService.setDefaultCamera(cam);
+              if (mounted) setState(() {});
+            },
+            child: Text(cam),
+          );
+        }).toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+      ),
     );
   }
 

@@ -1,6 +1,5 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:uuid/uuid.dart';
 import '../models/contact_item.dart';
 
 class ContactsService {
@@ -21,9 +20,9 @@ class ContactsService {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'aura_contacts.db');
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE contacts(
@@ -35,40 +34,25 @@ class ContactsService {
             avatarUrl TEXT
           )
         ''');
-
-        // Seed default corporate PBX directory contacts
-        final seedContacts = [
-          ContactItem(
-            id: const Uuid().v4(),
-            name: 'Echo Test (Audio Check)',
-            extension: '*43',
-            isFavorite: true,
-          ),
-          ContactItem(
-            id: const Uuid().v4(),
-            name: 'Voicemail PBX',
-            extension: '*97',
-            isFavorite: true,
-          ),
-          ContactItem(
-            id: const Uuid().v4(),
-            name: 'PBX Operator',
-            extension: '0',
-            isFavorite: false,
-          ),
-          ContactItem(
-            id: const Uuid().v4(),
-            name: 'IT Support Desk',
-            extension: '100',
-            isFavorite: false,
-          ),
-        ];
-
-        for (final c in seedContacts) {
-          await db.insert('contacts', c.toMap());
-        }
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // Clean up legacy seed dummy contacts if upgrading from version 1
+        await db.delete(
+          'contacts',
+          where: "name IN ('Echo Test (Audio Check)', 'Voicemail PBX', 'PBX Operator', 'IT Support Desk')",
+        );
       },
     );
+
+    // Also proactively clean any dummy contacts
+    try {
+      await db.delete(
+        'contacts',
+        where: "name IN ('Echo Test (Audio Check)', 'Voicemail PBX', 'PBX Operator', 'IT Support Desk')",
+      );
+    } catch (_) {}
+
+    return db;
   }
 
   Future<List<ContactItem>> getAllContacts() async {

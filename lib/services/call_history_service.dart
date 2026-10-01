@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/call_log_item.dart';
+import 'call_recording_service.dart';
 
 class CallHistoryService {
   static final CallHistoryService _instance = CallHistoryService._internal();
@@ -22,7 +23,7 @@ class CallHistoryService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE call_logs (
@@ -31,9 +32,17 @@ class CallHistoryService {
             displayName TEXT,
             type TEXT NOT NULL,
             timestamp TEXT NOT NULL,
-            durationSeconds INTEGER NOT NULL
+            durationSeconds INTEGER NOT NULL,
+            recordingPath TEXT
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute('ALTER TABLE call_logs ADD COLUMN recordingPath TEXT');
+          } catch (_) {}
+        }
       },
     );
   }
@@ -65,12 +74,31 @@ class CallHistoryService {
 
   Future<int> deleteLog(int id) async {
     final db = await database;
+    // 1. Fetch item to clean up its recording file
+    final List<Map<String, dynamic>> maps = await db.query(
+      'call_logs',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isNotEmpty) {
+      final item = CallLogItem.fromMap(maps.first);
+      if (item.hasRecording) {
+        await CallRecordingService().deleteRecordingFile(item.recordingPath);
+      }
+    }
+    // 2. Delete database entry
     return await db.delete('call_logs', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<int> clearHistory() async {
     final db = await database;
+    // Delete all recording audio files
+    final all = await getAllLogs();
+    for (final item in all) {
+      if (item.hasRecording) {
+        await CallRecordingService().deleteRecordingFile(item.recordingPath);
+      }
+    }
     return await db.delete('call_logs');
   }
 }
-

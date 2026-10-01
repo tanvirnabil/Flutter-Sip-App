@@ -78,13 +78,13 @@ class _DialpadScreenState extends State<DialpadScreen> {
     }
   }
 
-  Future<void> _handleCall() async {
+  Future<void> _handleCall({bool isVideo = false}) async {
     final number = _numberController.text.trim();
     if (number.isEmpty) return;
 
     Haptics.medium();
     final sip = context.read<SipProvider>();
-    final ok = await sip.makeCall(number);
+    final ok = await sip.makeCall(number, isVideo: isVideo);
 
     if (mounted && ok) {
       Navigator.push(
@@ -162,11 +162,32 @@ class _DialpadScreenState extends State<DialpadScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Row(
                 children: [
-                  const SizedBox(width: 76),
+                  SizedBox(
+                    width: 76,
+                    child: Center(
+                      child: InkWell(
+                        onTap: () => _handleCall(isVideo: true),
+                        customBorder: const CircleBorder(),
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: AppColors.accentBlue.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            CupertinoIcons.video_camera_solid,
+                            color: AppColors.accentBlue,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: Center(
                       child: InkWell(
-                        onTap: _handleCall,
+                        onTap: () => _handleCall(isVideo: false),
                         customBorder: const CircleBorder(),
                         child: Container(
                           width: 76,

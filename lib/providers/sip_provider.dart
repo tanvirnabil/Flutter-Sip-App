@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../models/sip_account.dart';
 import '../models/call_session_model.dart';
 import '../models/call_log_item.dart';
 import '../services/sip_service.dart';
 import '../services/call_history_service.dart';
+import '../services/call_recording_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/background_service.dart';
 
@@ -17,15 +19,14 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
   String _statusMessage = 'Disconnected';
   SipAccount? _account;
   CallSessionModel? _session;
-
-  Timer? _durationTimer;
   int _callDuration = 0;
+  Timer? _durationTimer;
   DateTime? _callStartTime;
 
   SipProvider() {
     _sipService.addListener(this);
-    _initCallkitEventListener();
     _loadSavedAccount();
+    _initCallkitEventListener();
   }
 
   SipConnectionStatus get status => _status;
@@ -35,6 +36,9 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
   bool get isRegistered => _status == SipConnectionStatus.registered;
   bool get hasActiveCall => _session != null && _session!.status != AuraCallStatus.ended;
   int get callDuration => _callDuration;
+
+  RTCVideoRenderer get localRenderer => _sipService.localRenderer;
+  RTCVideoRenderer get remoteRenderer => _sipService.remoteRenderer;
 
   String get formattedDuration {
     final minutes = (_callDuration ~/ 60).toString().padLeft(2, '0');
@@ -80,16 +84,16 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
     notifyListeners();
   }
 
-  Future<bool> makeCall(String number) async {
+  Future<bool> makeCall(String number, {bool isVideo = false}) async {
     if (number.trim().isEmpty) return false;
     _callDuration = 0;
     _callStartTime = DateTime.now();
-    final ok = await _sipService.makeCall(number);
+    final ok = await _sipService.makeCall(number, isVideo: isVideo);
     return ok;
   }
 
-  void answerCall() {
-    _sipService.answerCall();
+  void answerCall({bool isVideo = false}) {
+    _sipService.answerCall(isVideo: isVideo);
   }
 
   void hangup() {
@@ -105,18 +109,26 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
     _sipService.toggleHold();
   }
 
-  void toggleSpeaker() {
-    _sipService.toggleSpeaker();
+  Future<void> toggleSpeaker() async {
+    await _sipService.toggleSpeaker();
   }
 
   void sendDTMF(String tone) {
     _sipService.sendDTMF(tone);
   }
 
+  Future<void> switchCamera() async {
+    await _sipService.switchCamera();
+  }
+
+  void toggleCamera() {
+    _sipService.toggleCamera();
+  }
+
   void _startTimer() {
     _durationTimer?.cancel();
     _callDuration = 0;
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _callDuration++;
       if (_session != null) {
         _session = _session!.copyWith(durationSeconds: _callDuration);
@@ -138,21 +150,26 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
   }
 
   @override
-  void onCallStateChanged(CallSessionModel session) {
+  void onCallStateChanged(CallSessionModel session) async {
     final previousStatus = _session?.status;
     _session = session;
 
     if (session.status == AuraCallStatus.active && previousStatus != AuraCallStatus.active) {
       _startTimer();
+      // Auto-start recording if enabled in settings
+      if (CallRecordingService().isAutoRecordEnabled) {
+        await CallRecordingService().startRecording(session.id, session.targetNumber);
+      }
     } else if (session.status == AuraCallStatus.ended) {
       _stopTimer();
-      _saveCallLog(session);
+      final recordingPath = await CallRecordingService().stopRecording();
+      _saveCallLog(session, recordingPath: recordingPath);
     }
 
     notifyListeners();
   }
 
-  Future<void> _saveCallLog(CallSessionModel session) async {
+  Future<void> _saveCallLog(CallSessionModel session, {String? recordingPath}) async {
     final type = session.direction == AuraCallDirection.outgoing
         ? CallLogType.outgoing
         : (_callDuration > 0 ? CallLogType.incoming : CallLogType.missed);
@@ -163,6 +180,7 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
       type: type,
       timestamp: _callStartTime ?? DateTime.now(),
       durationSeconds: _callDuration,
+      recordingPath: recordingPath,
     );
 
     await _historyService.insertCallLog(log);
@@ -175,4 +193,3 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
     super.dispose();
   }
 }
-

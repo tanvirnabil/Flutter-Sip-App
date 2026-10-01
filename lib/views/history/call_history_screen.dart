@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +11,70 @@ import '../../providers/history_provider.dart';
 import '../../providers/sip_provider.dart';
 import '../call/active_call_screen.dart';
 
-class CallHistoryScreen extends StatelessWidget {
+class CallHistoryScreen extends StatefulWidget {
   const CallHistoryScreen({super.key});
+
+  @override
+  State<CallHistoryScreen> createState() => _CallHistoryScreenState();
+}
+
+class _CallHistoryScreenState extends State<CallHistoryScreen> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  int? _playingLogId;
+  bool _isPlaying = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _position = p);
+    });
+    _audioPlayer.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _duration = d);
+    });
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlayback(CallLogItem item) async {
+    if (item.recordingPath == null) return;
+    final file = File(item.recordingPath!);
+    if (!file.existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recording file not found on disk.')),
+      );
+      return;
+    }
+
+    if (_playingLogId == item.id && _isPlaying) {
+      await _audioPlayer.pause();
+      setState(() => _isPlaying = false);
+    } else if (_playingLogId == item.id && !_isPlaying) {
+      await _audioPlayer.resume();
+      setState(() => _isPlaying = true);
+    } else {
+      await _audioPlayer.stop();
+      _playingLogId = item.id;
+      _isPlaying = true;
+      _position = Duration.zero;
+      setState(() {});
+      await _audioPlayer.play(DeviceFileSource(item.recordingPath!));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +128,8 @@ class CallHistoryScreen extends StatelessWidget {
                   ),
                   itemBuilder: (context, index) {
                     final item = history.logs[index];
+                    final isCurrentPlaying = _playingLogId == item.id;
+
                     return Dismissible(
                       key: Key('call_log_${item.id ?? index}'),
                       direction: DismissDirection.endToStart,
@@ -75,49 +141,154 @@ class CallHistoryScreen extends StatelessWidget {
                       ),
                       onDismissed: (_) {
                         if (item.id != null) {
+                          if (_playingLogId == item.id) {
+                            _audioPlayer.stop();
+                          }
                           history.deleteLog(item.id!);
                         }
                       },
-                      child: ListTile(
-                        leading: _buildCallTypeIcon(item.type),
-                        title: Text(
-                          item.title,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w500,
-                            color: item.type == CallLogType.missed
-                                ? AppColors.endCallRed
-                                : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
-                          ),
-                        ),
-                        subtitle: Text(
-                          '${item.type.name.toUpperCase()} • ${item.formattedDuration}',
-                          style: const TextStyle(fontSize: 13, color: AppColors.lightTextSecondary),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              item.formattedDate,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: _buildCallTypeIcon(item.type),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w500,
+                                      color: item.type == CallLogType.missed
+                                          ? AppColors.endCallRed
+                                          : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
+                                    ),
+                                  ),
+                                ),
+                                if (item.hasRecording)
+                                  GestureDetector(
+                                    onTap: () => _togglePlayback(item),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(left: 6),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: isCurrentPlaying && _isPlaying
+                                            ? AppColors.callGreen.withValues(alpha: 0.2)
+                                            : AppColors.accentBlue.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isCurrentPlaying && _isPlaying
+                                                ? CupertinoIcons.pause_fill
+                                                : CupertinoIcons.play_arrow_solid,
+                                            size: 12,
+                                            color: isCurrentPlaying && _isPlaying
+                                                ? AppColors.callGreen
+                                                : AppColors.accentBlue,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'REC',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: isCurrentPlaying && _isPlaying
+                                                  ? AppColors.callGreen
+                                                  : AppColors.accentBlue,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              '${item.type.name.toUpperCase()} • ${item.formattedDuration}',
                               style: const TextStyle(fontSize: 13, color: AppColors.lightTextSecondary),
                             ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(
-                                CupertinoIcons.info_circle,
-                                color: AppColors.accentBlue,
-                                size: 22,
-                              ),
-                              onPressed: () => _callBack(context, item.phoneNumber),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  item.formattedDate,
+                                  style: const TextStyle(fontSize: 13, color: AppColors.lightTextSecondary),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(
+                                    CupertinoIcons.phone_fill,
+                                    color: AppColors.callGreen,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => _callBack(context, item.phoneNumber),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        onTap: () => _callBack(context, item.phoneNumber),
+                            onTap: item.hasRecording ? () => _togglePlayback(item) : () => _callBack(context, item.phoneNumber),
+                          ),
+
+                          // Inline Audio Scrubber Player when recording is active
+                          if (item.hasRecording && isCurrentPlaying)
+                            Container(
+                              margin: const EdgeInsets.fromLTRB(68, 0, 16, 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    icon: Icon(
+                                      _isPlaying ? CupertinoIcons.pause_circle_fill : CupertinoIcons.play_circle_fill,
+                                      color: AppColors.accentBlue,
+                                      size: 30,
+                                    ),
+                                    onPressed: () => _togglePlayback(item),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                        trackHeight: 3,
+                                      ),
+                                      child: Slider(
+                                        value: _position.inSeconds.toDouble().clamp(0.0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
+                                        max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
+                                        onChanged: (val) {
+                                          _audioPlayer.seek(Duration(seconds: val.toInt()));
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },
                 ),
     );
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   Widget _buildEmptyState(bool isDark) {
@@ -184,7 +355,7 @@ class CallHistoryScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => CupertinoActionSheet(
         title: const Text('Clear Call History?'),
-        message: const Text('This will delete all recent call logs.'),
+        message: const Text('This will delete all recent call logs and their call recordings.'),
         actions: [
           CupertinoActionSheetAction(
             isDestructiveAction: true,
@@ -203,4 +374,3 @@ class CallHistoryScreen extends StatelessWidget {
     );
   }
 }
-

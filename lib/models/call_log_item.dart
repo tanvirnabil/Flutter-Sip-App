@@ -9,6 +9,7 @@ class CallLogItem {
   final CallLogType type;
   final DateTime timestamp;
   final int durationSeconds;
+  final String? recordingPath;
 
   const CallLogItem({
     this.id,
@@ -17,7 +18,10 @@ class CallLogItem {
     required this.type,
     required this.timestamp,
     this.durationSeconds = 0,
+    this.recordingPath,
   });
+
+  bool get hasRecording => recordingPath != null && recordingPath!.isNotEmpty;
 
   String get title => displayName.isNotEmpty ? displayName : phoneNumber;
 
@@ -42,6 +46,27 @@ class CallLogItem {
     }
   }
 
+  CallLogItem copyWith({
+    int? id,
+    String? phoneNumber,
+    String? displayName,
+    CallLogType? type,
+    DateTime? timestamp,
+    int? durationSeconds,
+    String? recordingPath,
+    bool clearRecordingPath = false,
+  }) {
+    return CallLogItem(
+      id: id ?? this.id,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      displayName: displayName ?? this.displayName,
+      type: type ?? this.type,
+      timestamp: timestamp ?? this.timestamp,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      recordingPath: clearRecordingPath ? null : (recordingPath ?? this.recordingPath),
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -50,6 +75,7 @@ class CallLogItem {
       'type': type.name,
       'timestamp': timestamp.toIso8601String(),
       'durationSeconds': durationSeconds,
+      'recordingPath': recordingPath,
     };
   }
 
@@ -64,7 +90,7 @@ class CallLogItem {
       ),
       timestamp: DateTime.tryParse(map['timestamp'] ?? '') ?? DateTime.now(),
       durationSeconds: map['durationSeconds'] as int? ?? 0,
+      recordingPath: map['recordingPath'] as String?,
     );
   }
 }
-

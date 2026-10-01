@@ -5,6 +5,7 @@ class ContactItem {
   final String? email;
   final bool isFavorite;
   final String? avatarUrl;
+  final bool isDeviceContact;
 
   ContactItem({
     required this.id,
@@ -13,6 +14,7 @@ class ContactItem {
     this.email,
     this.isFavorite = false,
     this.avatarUrl,
+    this.isDeviceContact = false,
   });
 
   ContactItem copyWith({
@@ -22,6 +24,7 @@ class ContactItem {
     String? email,
     bool? isFavorite,
     String? avatarUrl,
+    bool? isDeviceContact,
   }) {
     return ContactItem(
       id: id ?? this.id,
@@ -30,6 +33,7 @@ class ContactItem {
       email: email ?? this.email,
       isFavorite: isFavorite ?? this.isFavorite,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      isDeviceContact: isDeviceContact ?? this.isDeviceContact,
     );
   }
 
@@ -52,6 +56,7 @@ class ContactItem {
       email: map['email'] as String?,
       isFavorite: (map['isFavorite'] as int?) == 1,
       avatarUrl: map['avatarUrl'] as String?,
+      isDeviceContact: false,
     );
   }
 }

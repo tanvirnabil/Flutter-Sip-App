@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:logger/logger.dart';
 import 'package:sip_ua/sip_ua.dart';
 import '../models/sip_account.dart';
@@ -7,6 +8,7 @@ import '../models/call_session_model.dart';
 import 'audio_routing_service.dart';
 import 'background_service.dart';
 import 'callkit_service.dart';
+import 'video_settings_service.dart';
 
 enum SipConnectionStatus {
   disconnected,
@@ -44,6 +46,11 @@ class SipService implements SipUaHelperListener {
   bool _isAutoReconnecting = false;
   bool _wasOffline = false;
 
+  // WebRTC Video Renderers
+  final RTCVideoRenderer localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
+  bool _isRenderersInitialized = false;
+
   SipService._internal() {
     _helper.addSipUaHelperListener(this);
     _initConnectivityListener();
@@ -56,6 +63,15 @@ class SipService implements SipUaHelperListener {
   Call? get activeCall => _activeCall;
   CallSessionModel? get currentSession => _currentSession;
   SIPUAHelper get helper => _helper;
+
+  Future<void> initRenderers() async {
+    if (_isRenderersInitialized) return;
+    try {
+      await localRenderer.initialize();
+      await remoteRenderer.initialize();
+      _isRenderersInitialized = true;
+    } catch (_) {}
+  }
 
   void addListener(SipServiceListener listener) {
     if (!_listeners.contains(listener)) {
@@ -74,7 +90,6 @@ class SipService implements SipUaHelperListener {
         _wasOffline = true;
       } else if (_wasOffline) {
         _wasOffline = false;
-        // Only reconnect if device was previously completely offline and is now back online
         if (_currentAccount != null && !_helper.registered) {
           _triggerAutoReconnect(immediate: true);
         }
@@ -84,7 +99,6 @@ class SipService implements SipUaHelperListener {
 
   void _startKeepAliveLoop() {
     _keepAliveTimer?.cancel();
-    // Watchdog timer: checks every 30s if registration dropped unexpectedly
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (_currentAccount != null &&
           !_helper.registered &&
@@ -128,13 +142,11 @@ class SipService implements SipUaHelperListener {
     ];
 
     if (account.isWebRtc) {
-      // WebRTC mode (Asterisk WSS / FreePBX WebRTC)
       settings.transportType = TransportType.WS;
       final socketUrl = account.resolvedWebSocketUrl;
       settings.webSocketUrl = socketUrl.isNotEmpty ? socketUrl : 'ws://${account.domain}:${account.port}/ws';
       settings.webSocketSettings.allowBadCertificate = true;
     } else {
-      // Standard SIP mode (UDP/TCP Port 5060)
       settings.transportType = TransportType.TCP;
       settings.host = account.domain;
       settings.port = account.port.toString();
@@ -164,25 +176,31 @@ class SipService implements SipUaHelperListener {
     } catch (_) {}
   }
 
-  Future<bool> makeCall(String destination) async {
+  Future<bool> makeCall(String destination, {bool isVideo = false}) async {
     if (_currentAccount == null) return false;
     final cleanDest = destination.trim();
     if (cleanDest.isEmpty) return false;
 
     final target = 'sip:$cleanDest@${_currentAccount!.domain}';
+    final shouldCallWithVideo = isVideo && VideoSettingsService().isVideoEnabled;
+
+    if (shouldCallWithVideo) {
+      await initRenderers();
+    }
 
     _currentSession = CallSessionModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       targetNumber: cleanDest,
       direction: AuraCallDirection.outgoing,
       status: AuraCallStatus.connecting,
+      isVideo: shouldCallWithVideo,
     );
     _notifyCallStateChanged();
 
     try {
       final success = await _helper.call(
         target,
-        voiceOnly: true,
+        voiceOnly: !shouldCallWithVideo,
       );
       return success;
     } catch (e) {
@@ -192,10 +210,16 @@ class SipService implements SipUaHelperListener {
     }
   }
 
-  void answerCall() {
+  void answerCall({bool isVideo = false}) {
     if (_activeCall != null) {
-      _activeCall!.answer(_helper.buildCallOptions(true));
-      _currentSession = _currentSession?.copyWith(status: AuraCallStatus.active);
+      if (isVideo) {
+        initRenderers();
+      }
+      _activeCall!.answer(_helper.buildCallOptions(!isVideo));
+      _currentSession = _currentSession?.copyWith(
+        status: AuraCallStatus.active,
+        isVideo: isVideo,
+      );
       _notifyCallStateChanged();
     }
   }
@@ -205,10 +229,35 @@ class SipService implements SipUaHelperListener {
       _activeCall!.hangup();
     }
     CallKitService.endAllCalls();
+    localRenderer.srcObject = null;
+    remoteRenderer.srcObject = null;
     _currentSession = _currentSession?.copyWith(status: AuraCallStatus.ended);
     _notifyCallStateChanged();
     _activeCall = null;
     _currentSession = null;
+  }
+
+  Future<void> switchCamera() async {
+    final stream = localRenderer.srcObject;
+    if (stream != null) {
+      final tracks = stream.getVideoTracks();
+      if (tracks.isNotEmpty) {
+        await Helper.switchCamera(tracks.first);
+      }
+    }
+  }
+
+  void toggleCamera() {
+    final stream = localRenderer.srcObject;
+    if (stream != null && _currentSession != null) {
+      final tracks = stream.getVideoTracks();
+      if (tracks.isNotEmpty) {
+        final newEnabled = !_currentSession!.isLocalCameraEnabled;
+        tracks.first.enabled = newEnabled;
+        _currentSession = _currentSession!.copyWith(isLocalCameraEnabled: newEnabled);
+        _notifyCallStateChanged();
+      }
+    }
   }
 
   void toggleMute() {
@@ -275,7 +324,6 @@ class SipService implements SipUaHelperListener {
         } else {
           _statusMessage = 'Registration failed';
         }
-        // Automatically retry with backoff if not a permanent auth error
         if (_currentAccount != null && !causeStr.contains('403')) {
           _triggerAutoReconnect();
         }
@@ -294,6 +342,7 @@ class SipService implements SipUaHelperListener {
     final remoteNumber = call.remote_identity ?? 'Unknown';
     final remoteName = call.remote_display_name ?? '';
     final isIncoming = call.direction.toString().toUpperCase().contains('INCOMING');
+    final hasVideo = call.remote_has_video;
 
     switch (state.state) {
       case CallStateEnum.CALL_INITIATION:
@@ -303,6 +352,7 @@ class SipService implements SipUaHelperListener {
           targetName: remoteName,
           direction: isIncoming ? AuraCallDirection.incoming : AuraCallDirection.outgoing,
           status: AuraCallStatus.connecting,
+          isVideo: hasVideo || (_currentSession?.isVideo ?? false),
         );
         if (isIncoming) {
           CallKitService.showIncomingCall(
@@ -310,6 +360,17 @@ class SipService implements SipUaHelperListener {
             callerName: remoteName,
             callerNumber: remoteNumber,
           );
+        }
+        break;
+
+      case CallStateEnum.STREAM:
+        if (state.stream != null) {
+          initRenderers();
+          if (state.originator == Originator.local) {
+            localRenderer.srcObject = state.stream;
+          } else {
+            remoteRenderer.srcObject = state.stream;
+          }
         }
         break;
 
@@ -322,6 +383,7 @@ class SipService implements SipUaHelperListener {
               targetName: remoteName,
               direction: isIncoming ? AuraCallDirection.incoming : AuraCallDirection.outgoing,
               status: AuraCallStatus.ringing,
+              isVideo: hasVideo,
             );
         break;
 
@@ -330,6 +392,7 @@ class SipService implements SipUaHelperListener {
         _currentSession = _currentSession?.copyWith(
               status: AuraCallStatus.active,
               startedAt: DateTime.now(),
+              isVideo: hasVideo || (_currentSession?.isVideo ?? false),
             ) ??
             CallSessionModel(
               id: call.id ?? '',
@@ -338,6 +401,7 @@ class SipService implements SipUaHelperListener {
               direction: isIncoming ? AuraCallDirection.incoming : AuraCallDirection.outgoing,
               status: AuraCallStatus.active,
               startedAt: DateTime.now(),
+              isVideo: hasVideo,
             );
         break;
 
@@ -351,6 +415,8 @@ class SipService implements SipUaHelperListener {
 
       case CallStateEnum.ENDED:
       case CallStateEnum.FAILED:
+        localRenderer.srcObject = null;
+        remoteRenderer.srcObject = null;
         _currentSession = _currentSession?.copyWith(status: AuraCallStatus.ended);
         CallKitService.endAllCalls();
         _notifyCallStateChanged();
@@ -370,14 +436,12 @@ class SipService implements SipUaHelperListener {
   @override
   void transportStateChanged(TransportState state) {
     if (state.state == TransportStateEnum.CONNECTED) {
-      // Only announce transport connected if not already in fully registered state
       if (_status != SipConnectionStatus.registered) {
         _status = SipConnectionStatus.connected;
         _statusMessage = 'PBX Transport Connected';
         _notifyRegistrationChanged();
       }
     } else if (state.state == TransportStateEnum.DISCONNECTED) {
-      // Allow sip_ua internal socket recovery to reconnect without thrashing registered UI status
       if (_status == SipConnectionStatus.connecting) {
         _statusMessage = 'Connecting to PBX...';
         _notifyRegistrationChanged();
@@ -412,5 +476,7 @@ class SipService implements SipUaHelperListener {
     _keepAliveTimer?.cancel();
     _reconnectTimer?.cancel();
     _connectivitySubscription?.cancel();
+    localRenderer.dispose();
+    remoteRenderer.dispose();
   }
 }

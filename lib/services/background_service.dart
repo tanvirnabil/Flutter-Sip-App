@@ -124,3 +124,4 @@ class BackgroundService {
     } catch (_) {}
   }
 }
+
