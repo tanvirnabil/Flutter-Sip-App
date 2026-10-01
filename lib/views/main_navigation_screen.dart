@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../models/call_session_model.dart';
 import '../providers/sip_provider.dart';
 import 'dialpad/dialpad_screen.dart';
-import 'history/call_history_screen.dart';
 import 'contacts/contacts_screen.dart';
+import 'history/call_history_screen.dart';
+import 'chat/chat_screen.dart';
 import 'settings/settings_screen.dart';
 import 'call/active_call_screen.dart';
+import 'widgets/dock_nav_bar.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -18,14 +20,38 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+  late final PageController _pageController;
   bool _isCallScreenPushed = false;
 
   final List<Widget> _screens = const [
     DialpadScreen(),
-    CallHistoryScreen(),
     ContactsScreen(),
+    CallHistoryScreen(),
+    ChatScreen(),
     SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onTabTapped(int index) {
+    if (_currentIndex == index) return;
+    setState(() => _currentIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,60 +78,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
 
     return Scaffold(
-      // Apple-grade fluid animated page switching transition
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.0, 0.02),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
-            ),
-          );
-        },
-        child: KeyedSubtree(
-          key: ValueKey<int>(_currentIndex),
-          child: _screens[_currentIndex],
-        ),
+      extendBody: true,
+      body: PageView(
+        controller: _pageController,
+        physics: const NeverScrollableScrollPhysics(), // tab switching via dock
+        children: _screens,
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: AuraDockNavBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          if (_currentIndex != index) {
-            setState(() => _currentIndex = index);
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.circle_grid_3x3),
-            activeIcon: Icon(CupertinoIcons.circle_grid_3x3_fill),
-            label: 'Keypad',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.clock),
-            activeIcon: Icon(CupertinoIcons.clock_fill),
-            label: 'Recents',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.person_2),
-            activeIcon: Icon(CupertinoIcons.person_2_fill),
-            label: 'Contacts',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.gear_alt),
-            activeIcon: Icon(CupertinoIcons.gear_alt_fill),
-            label: 'Settings',
-          ),
-        ],
+        onTap: _onTabTapped,
       ),
     );
   }
 }
-

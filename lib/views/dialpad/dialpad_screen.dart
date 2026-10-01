@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_typography.dart';
 import '../../core/utils/dtmf_tones.dart';
 import '../../core/utils/haptics.dart';
 import '../../services/sip_service.dart';
@@ -22,14 +21,14 @@ class _DialpadScreenState extends State<DialpadScreen> {
 
   static const List<Map<String, String>> _keys = [
     {'digit': '1', 'letters': ''},
-    {'digit': '2', 'letters': 'A B C'},
-    {'digit': '3', 'letters': 'D E F'},
-    {'digit': '4', 'letters': 'G H I'},
-    {'digit': '5', 'letters': 'J K L'},
-    {'digit': '6', 'letters': 'M N O'},
-    {'digit': '7', 'letters': 'P Q R S'},
-    {'digit': '8', 'letters': 'T U V'},
-    {'digit': '9', 'letters': 'W X Y Z'},
+    {'digit': '2', 'letters': 'ABC'},
+    {'digit': '3', 'letters': 'DEF'},
+    {'digit': '4', 'letters': 'GHI'},
+    {'digit': '5', 'letters': 'JKL'},
+    {'digit': '6', 'letters': 'MNO'},
+    {'digit': '7', 'letters': 'PQRS'},
+    {'digit': '8', 'letters': 'TUV'},
+    {'digit': '9', 'letters': 'WXYZ'},
     {'digit': '*', 'letters': ''},
     {'digit': '0', 'letters': '+'},
     {'digit': '#', 'letters': ''},
@@ -53,7 +52,8 @@ class _DialpadScreenState extends State<DialpadScreen> {
     if (_numberController.text.isNotEmpty) {
       Haptics.light();
       setState(() {
-        _numberController.text = _numberController.text.substring(0, _numberController.text.length - 1);
+        _numberController.text =
+            _numberController.text.substring(0, _numberController.text.length - 1);
       });
     }
   }
@@ -99,254 +99,298 @@ class _DialpadScreenState extends State<DialpadScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sip = context.watch<SipProvider>();
 
+    final gridLineColor = isDark ? const Color(0xFF2C2C2E) : const Color(0xFFD1D1D6);
+    final isRegistered = sip.status == SipConnectionStatus.registered;
+    final accountTitle = sip.account?.displayName.isNotEmpty == true
+        ? sip.account!.displayName
+        : (sip.account?.extension.isNotEmpty == true ? 'SOHUB ${sip.account!.extension}' : 'SOHUB 105');
+
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 8),
-            _buildConnectionPill(sip, isDark),
-            const Spacer(flex: 1),
+            // Top Header: QR icon on left, Center Account Title + Status Subtitle
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SizedBox(
-                height: 52,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    _numberController.text.isEmpty ? '' : _numberController.text,
-                    style: AppTypography.dialedNumberDisplay.copyWith(
-                      color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_numberController.text.isEmpty)
-              GestureDetector(
-                onTap: _pasteClipboard,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    'Tap to paste number',
-                    style: TextStyle(
-                      color: AppColors.accentBlue,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              )
-            else
-              const SizedBox(height: 22),
-            const Spacer(flex: 1),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Column(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  for (int row = 0; row < 4; row++)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          for (int col = 0; col < 3; col++)
-                            _buildDialButton(_keys[row * 3 + col], isDark),
-                        ],
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          CupertinoIcons.qrcode,
+                          size: 22,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
                       ),
+                      onPressed: () {
+                        // QR scan or PBX account info modal
+                        _showAccountInfoSheet(context, sip, isDark);
+                      },
                     ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        accountTitle,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : const Color(0xFF3A3A3C),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isRegistered
+                            ? 'Ready'
+                            : (sip.status == SipConnectionStatus.connecting
+                                ? 'Connecting...'
+                                : 'Offline'),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isRegistered
+                              ? const Color(0xFF6BB82D) // Vibrant green from screenshot
+                              : (sip.status == SipConnectionStatus.connecting
+                                  ? AppColors.warningOrange
+                                  : AppColors.endCallRed),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 76,
-                    child: Center(
-                      child: InkWell(
-                        onTap: () => _handleCall(isVideo: true),
-                        customBorder: const CircleBorder(),
-                        child: Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: AppColors.accentBlue.withValues(alpha: 0.16),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            CupertinoIcons.video_camera_solid,
-                            color: AppColors.accentBlue,
-                            size: 26,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: InkWell(
-                        onTap: () => _handleCall(isVideo: false),
-                        customBorder: const CircleBorder(),
-                        child: Container(
-                          width: 76,
-                          height: 76,
-                          decoration: const BoxDecoration(
-                            color: AppColors.callGreen,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Color(0x5534C759),
-                                blurRadius: 16,
-                                offset: Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            CupertinoIcons.phone_fill,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 76,
-                    child: _numberController.text.isNotEmpty
-                        ? GestureDetector(
-                            onTap: _onBackspace,
-                            onLongPress: _onClearAll,
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                child: Icon(
-                                  CupertinoIcons.delete_left_fill,
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                  size: 28,
-                                ),
+
+            // Dialed Number Display Area
+            Container(
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              alignment: Alignment.center,
+              child: _numberController.text.isNotEmpty
+                  ? Row(
+                      children: [
+                        const SizedBox(width: 40),
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _numberController.text,
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: 1.5,
+                                color: isDark ? Colors.white : Colors.black87,
                               ),
                             ),
-                          )
-                        : const SizedBox.shrink(),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            CupertinoIcons.delete_left_fill,
+                            size: 24,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                          onPressed: _onBackspace,
+                          onLongPress: _onClearAll,
+                        ),
+                      ],
+                    )
+                  : GestureDetector(
+                      onTap: _pasteClipboard,
+                      child: Text(
+                        'Tap to paste number',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white38 : Colors.black38,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+            ),
+
+            // Keypad Grid: Edge-to-edge thin lines dividing cells
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: gridLineColor, width: 0.8),
+                    bottom: BorderSide(color: gridLineColor, width: 0.8),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    for (int row = 0; row < 4; row++) ...[
+                      if (row > 0)
+                        Divider(
+                          height: 1,
+                          thickness: 0.8,
+                          color: gridLineColor,
+                        ),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            for (int col = 0; col < 3; col++) ...[
+                              if (col > 0)
+                                VerticalDivider(
+                                  width: 1,
+                                  thickness: 0.8,
+                                  color: gridLineColor,
+                                ),
+                              Expanded(
+                                child: _buildKeypadCell(
+                                  _keys[row * 3 + col],
+                                  isDark,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // Solid Green Call Button & Quick Video Action
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 76),
+              child: Row(
+                children: [
+                  // Video Call Toggle
+                  Container(
+                    height: 52,
+                    width: 52,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(
+                        CupertinoIcons.video_camera_solid,
+                        color: AppColors.accentBlue,
+                        size: 24,
+                      ),
+                      tooltip: 'Video Call',
+                      onPressed: () => _handleCall(isVideo: true),
+                    ),
+                  ),
+
+                  // Full-Width Green "Call" Action Banner
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF75B928), // Bright green matching Screenshot 1
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () => _handleCall(isVideo: false),
+                        child: const Text(
+                          'Call',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildConnectionPill(SipProvider sip, bool isDark) {
-    Color pillColor;
-    String label;
+  Widget _buildKeypadCell(Map<String, String> keyInfo, bool isDark) {
+    final digit = keyInfo['digit']!;
+    final letters = keyInfo['letters']!;
 
-    switch (sip.status) {
-      case SipConnectionStatus.registered:
-        pillColor = AppColors.callGreen;
-        label = sip.account != null ? '${sip.account!.extension}@${sip.account!.domain}' : 'Connected';
-        break;
-      case SipConnectionStatus.connecting:
-        pillColor = AppColors.warningOrange;
-        label = 'Connecting...';
-        break;
-      case SipConnectionStatus.registrationFailed:
-        pillColor = AppColors.endCallRed;
-        label = 'Registration Failed';
-        break;
-      case SipConnectionStatus.connected:
-        pillColor = AppColors.accentBlue;
-        label = 'Connected';
-        break;
-      case SipConnectionStatus.disconnected:
-        pillColor = Colors.grey;
-        label = 'Offline';
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? const Color(0x22FFFFFF) : const Color(0x15000000),
-          width: 0.5,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _onKeyPressed(digit),
+        onLongPress: () {
+          if (digit == '0') {
+            _onKeyPressed('+');
+          }
+        },
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                digit,
+                style: TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w200,
+                  color: isDark ? Colors.white : const Color(0xFF2C2C2E),
+                  height: 1.1,
+                ),
+              ),
+              if (letters.isNotEmpty)
+                Text(
+                  letters,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400,
+                    color: isDark ? Colors.white38 : const Color(0xFF8E8E93),
+                    letterSpacing: 1.2,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: pillColor, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-            ),
+    );
+  }
+
+  void _showAccountInfoSheet(BuildContext context, SipProvider sip, bool isDark) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(sip.account?.displayName ?? 'SIP Account'),
+        message: Text(
+          'Extension: ${sip.account?.extension ?? "N/A"}\n'
+          'Server: ${sip.account?.domain ?? "N/A"}\n'
+          'Status: ${sip.status.name.toUpperCase()}',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (sip.account != null) {
+                sip.register(sip.account!);
+              }
+            },
+            child: const Text('Reconnect / Re-register'),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDialButton(Map<String, String> keyData, bool isDark) {
-    final digit = keyData['digit']!;
-    final letters = keyData['letters']!;
-
-    return InkWell(
-      onTap: () => _onKeyPressed(digit),
-      onLongPress: () {
-        if (digit == '0') {
-          _onKeyPressed('+');
-        }
-      },
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: 76,
-        height: 76,
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkDialButton : AppColors.lightDialButton,
-          shape: BoxShape.circle,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              digit,
-              style: AppTypography.dialNumber.copyWith(
-                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-              ),
-            ),
-            if (letters.isNotEmpty)
-              Text(
-                letters,
-                style: AppTypography.dialLetters.copyWith(
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                ),
-              )
-            else if (digit == '0')
-              Text(
-                '+',
-                style: AppTypography.dialLetters.copyWith(
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                  fontSize: 12,
-                ),
-              ),
-          ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Close'),
         ),
       ),
     );
   }
 }
-

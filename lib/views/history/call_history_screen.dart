@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_typography.dart';
 import '../../core/utils/haptics.dart';
 import '../../models/call_log_item.dart';
 import '../../providers/history_provider.dart';
@@ -24,6 +24,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _isEditing = false;
 
   @override
   void initState() {
@@ -68,307 +69,467 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
       setState(() => _isPlaying = true);
     } else {
       await _audioPlayer.stop();
-      _playingLogId = item.id;
-      _isPlaying = true;
-      _position = Duration.zero;
-      setState(() {});
       await _audioPlayer.play(DeviceFileSource(item.recordingPath!));
+      setState(() {
+        _playingLogId = item.id;
+        _isPlaying = true;
+      });
     }
+  }
+
+  void _callNumber(String number, {bool isVideo = false}) {
+    Haptics.medium();
+    final sip = context.read<SipProvider>();
+    sip.makeCall(number, isVideo: isVideo);
+    Navigator.of(context).push(
+      CupertinoPageRoute(builder: (_) => const ActiveCallScreen()),
+    );
+  }
+
+  void _confirmClearAll() {
+    showCupertinoDialog(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Clear Call History'),
+        content: const Text('Are you sure you want to clear all recent calls and recordings?'),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<HistoryProvider>().clearHistory();
+            },
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCallDetailsSheet(CallLogItem item, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final isCurrentPlaying = _playingLogId == item.id && _isPlaying;
+            return Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2.5),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    item.displayName.isNotEmpty ? item.displayName : item.phoneNumber,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${item.type.name.toUpperCase()} • ${item.formattedDuration} • ${DateFormat('MMM d, yyyy h:mm a').format(item.timestamp)}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white60 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Call Recording Player if Available
+                  if (item.hasRecording) ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.endCallRed,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Call Recording (AAC-LC)',
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: Icon(
+                                  isCurrentPlaying
+                                      ? CupertinoIcons.pause_circle_fill
+                                      : CupertinoIcons.play_circle_fill,
+                                  color: AppColors.callGreen,
+                                  size: 38,
+                                ),
+                                onPressed: () async {
+                                  await _togglePlayback(item);
+                                  setSheetState(() {});
+                                },
+                              ),
+                              Expanded(
+                                child: Slider(
+                                  value: (_playingLogId == item.id && _duration.inMilliseconds > 0)
+                                      ? (_position.inMilliseconds / _duration.inMilliseconds)
+                                          .clamp(0.0, 1.0)
+                                      : 0.0,
+                                  activeColor: AppColors.callGreen,
+                                  onChanged: (val) {
+                                    if (_playingLogId == item.id && _duration.inMilliseconds > 0) {
+                                      final target = _duration * val;
+                                      _audioPlayer.seek(target);
+                                    }
+                                  },
+                                ),
+                              ),
+                              Text(
+                                _playingLogId == item.id
+                                    ? '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}'
+                                    : item.formattedDuration,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Action Buttons: Voice Call, Video Call, Delete
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF75B928),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(CupertinoIcons.phone_fill, size: 18),
+                        label: const Text('Voice Call'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _callNumber(item.phoneNumber, isVideo: false);
+                        },
+                      ),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accentBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(CupertinoIcons.video_camera_solid, size: 18),
+                        label: const Text('Video Call'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _callNumber(item.phoneNumber, isVideo: true);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.trash, color: AppColors.endCallRed),
+                        tooltip: 'Delete Log',
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          if (item.id != null) {
+                            context.read<HistoryProvider>().deleteLog(item.id!);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final history = context.watch<HistoryProvider>();
+    final historyProv = context.watch<HistoryProvider>();
+    final logs = historyProv.logs;
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       appBar: AppBar(
-        title: const Text('Recents'),
-        actions: [
-          if (history.logs.isNotEmpty)
-            CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              onPressed: () => _confirmClearHistory(context, history),
-              child: const Text('Clear', style: TextStyle(color: AppColors.endCallRed, fontSize: 16)),
-            ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-            child: SizedBox(
-              width: double.infinity,
-              child: CupertinoSlidingSegmentedControl<int>(
-                groupValue: history.selectedFilterIndex,
-                children: const {
-                  0: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('All')),
-                  1: Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Missed')),
-                },
-                onValueChanged: (val) {
-                  if (val != null) {
-                    Haptics.selection();
-                    history.setFilter(val);
-                  }
-                },
+        title: const Text(
+          'Call History',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+        ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        leadingWidth: 80,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 14),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: GestureDetector(
+              onTap: logs.isEmpty ? null : _confirmClearAll,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  'Clear',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: logs.isEmpty
+                        ? Colors.grey
+                        : (isDark ? Colors.white : Colors.black87),
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
-      body: history.isLoading
-          ? const Center(child: CupertinoActivityIndicator())
-          : history.logs.isEmpty
-              ? _buildEmptyState(isDark)
-              : ListView.separated(
-                  itemCount: history.logs.length,
-                  separatorBuilder: (context, index) => Divider(
-                    height: 0.5,
-                    indent: 68,
-                    color: isDark ? AppColors.darkDivider : AppColors.lightDivider,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: () {
+                  Haptics.selection();
+                  setState(() => _isEditing = !_isEditing);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _isEditing
+                        ? const Color(0xFFF58220)
+                        : (isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7)),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  itemBuilder: (context, index) {
-                    final item = history.logs[index];
-                    final isCurrentPlaying = _playingLogId == item.id;
-
-                    return Dismissible(
-                      key: Key('call_log_${item.id ?? index}'),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        color: AppColors.endCallRed,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: const Icon(CupertinoIcons.trash, color: Colors.white),
-                      ),
-                      onDismissed: (_) {
-                        if (item.id != null) {
-                          if (_playingLogId == item.id) {
-                            _audioPlayer.stop();
-                          }
-                          history.deleteLog(item.id!);
-                        }
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ListTile(
-                            leading: _buildCallTypeIcon(item.type),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item.title,
-                                    style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w500,
-                                      color: item.type == CallLogType.missed
-                                          ? AppColors.endCallRed
-                                          : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
-                                    ),
-                                  ),
-                                ),
-                                if (item.hasRecording)
-                                  GestureDetector(
-                                    onTap: () => _togglePlayback(item),
-                                    child: Container(
-                                      margin: const EdgeInsets.only(left: 6),
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: isCurrentPlaying && _isPlaying
-                                            ? AppColors.callGreen.withValues(alpha: 0.2)
-                                            : AppColors.accentBlue.withValues(alpha: 0.15),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            isCurrentPlaying && _isPlaying
-                                                ? CupertinoIcons.pause_fill
-                                                : CupertinoIcons.play_arrow_solid,
-                                            size: 12,
-                                            color: isCurrentPlaying && _isPlaying
-                                                ? AppColors.callGreen
-                                                : AppColors.accentBlue,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'REC',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: isCurrentPlaying && _isPlaying
-                                                  ? AppColors.callGreen
-                                                  : AppColors.accentBlue,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            subtitle: Text(
-                              '${item.type.name.toUpperCase()} • ${item.formattedDuration}',
-                              style: const TextStyle(fontSize: 13, color: AppColors.lightTextSecondary),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  item.formattedDate,
-                                  style: const TextStyle(fontSize: 13, color: AppColors.lightTextSecondary),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(
-                                    CupertinoIcons.phone_fill,
-                                    color: AppColors.callGreen,
-                                    size: 20,
-                                  ),
-                                  onPressed: () => _callBack(context, item.phoneNumber),
-                                ),
-                              ],
-                            ),
-                            onTap: item.hasRecording ? () => _togglePlayback(item) : () => _callBack(context, item.phoneNumber),
-                          ),
-
-                          // Inline Audio Scrubber Player when recording is active
-                          if (item.hasRecording && isCurrentPlaying)
-                            Container(
-                              margin: const EdgeInsets.fromLTRB(68, 0, 16, 10),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    icon: Icon(
-                                      _isPlaying ? CupertinoIcons.pause_circle_fill : CupertinoIcons.play_circle_fill,
-                                      color: AppColors.accentBlue,
-                                      size: 30,
-                                    ),
-                                    onPressed: () => _togglePlayback(item),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                        trackHeight: 3,
-                                      ),
-                                      child: Slider(
-                                        value: _position.inSeconds.toDouble().clamp(0.0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
-                                        max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
-                                        onChanged: (val) {
-                                          _audioPlayer.seek(Duration(seconds: val.toInt()));
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
-                                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
+                  child: Text(
+                    _isEditing ? 'Done' : 'Edit',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _isEditing
+                          ? Colors.white
+                          : (isDark ? Colors.white : Colors.black87),
+                    ),
+                  ),
                 ),
-    );
-  }
-
-  String _formatDuration(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            CupertinoIcons.phone_badge_plus,
-            size: 64,
-            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No Recent Calls',
-            style: AppTypography.headline.copyWith(
-              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+              ),
             ),
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'Placed and received calls will appear here',
-            style: TextStyle(fontSize: 14, color: AppColors.lightTextSecondary),
-          ),
         ],
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: logs.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.clock,
+                      size: 48,
+                      color: Colors.grey.withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('No Recent Calls',
+                        style: TextStyle(fontSize: 15, color: Colors.grey)),
+                  ],
+                ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.only(bottom: 84),
+                itemCount: logs.length,
+                separatorBuilder: (context, index) => Divider(
+                  height: 1,
+                  thickness: 0.8,
+                  indent: 48,
+                  color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFEFEFF4),
+                ),
+                itemBuilder: (context, index) {
+                  final item = logs[index];
+                  return _buildHistoryRow(item, isDark, historyProv);
+                },
+              ),
       ),
     );
   }
 
-  Widget _buildCallTypeIcon(CallLogType type) {
-    switch (type) {
+  Widget _buildHistoryRow(CallLogItem item, bool isDark, HistoryProvider prov) {
+    final isMissed = item.type == CallLogType.missed;
+    final dateStr = DateFormat('M/d/yy').format(item.timestamp); // Matches Screenshot 3: 8/20/26
+
+    IconData directionIcon;
+    Color directionColor;
+
+    switch (item.type) {
       case CallLogType.incoming:
-        return const CircleAvatar(
-          backgroundColor: Color(0x2234C759),
-          child: Icon(CupertinoIcons.phone_arrow_down_left, color: AppColors.callGreen, size: 20),
-        );
+        directionIcon = CupertinoIcons.phone_arrow_down_left;
+        directionColor = const Color(0xFF8E8E93);
+        break;
       case CallLogType.outgoing:
-        return const CircleAvatar(
-          backgroundColor: Color(0x22007AFF),
-          child: Icon(CupertinoIcons.phone_arrow_up_right, color: AppColors.accentBlue, size: 20),
-        );
+        directionIcon = CupertinoIcons.phone_arrow_up_right;
+        directionColor = const Color(0xFF8E8E93);
+        break;
       case CallLogType.missed:
-        return const CircleAvatar(
-          backgroundColor: Color(0x22FF3B30),
-          child: Icon(CupertinoIcons.phone_badge_plus, color: AppColors.endCallRed, size: 20),
-        );
+        directionIcon = CupertinoIcons.phone_down_fill;
+        directionColor = AppColors.endCallRed;
+        break;
     }
-  }
 
-  void _callBack(BuildContext context, String phoneNumber) async {
-    Haptics.medium();
-    final sip = context.read<SipProvider>();
-    final ok = await sip.makeCall(phoneNumber);
-    if (context.mounted && ok) {
-      Navigator.push(
-        context,
-        CupertinoPageRoute(builder: (_) => const ActiveCallScreen()),
-      );
-    }
-  }
+    final displayName = item.displayName.isNotEmpty ? item.displayName : item.phoneNumber;
+    final subtitleLabel = item.displayName.isNotEmpty ? 'mobile' : 'Unknown';
 
-  void _confirmClearHistory(BuildContext context, HistoryProvider history) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: const Text('Clear Call History?'),
-        message: const Text('This will delete all recent call logs and their call recordings.'),
-        actions: [
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () {
-              Navigator.pop(ctx);
-              history.clearHistory();
-            },
-            child: const Text('Clear All Recents'),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (_isEditing) {
+            if (item.id != null) prov.deleteLog(item.id!);
+          } else {
+            _callNumber(item.phoneNumber, isVideo: false);
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              // Delete circle if in Edit mode
+              if (_isEditing) ...[
+                GestureDetector(
+                  onTap: () {
+                    if (item.id != null) prov.deleteLog(item.id!);
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    child: const Icon(
+                      CupertinoIcons.minus_circle_fill,
+                      color: AppColors.endCallRed,
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ],
+
+              // Direction Icon (Slanted phone handset from screenshot)
+              Icon(
+                directionIcon,
+                size: 18,
+                color: directionColor,
+              ),
+              const SizedBox(width: 14),
+
+              // Title (Red for missed, else standard) & Subtitle
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isMissed
+                            ? const Color(0xFFD32F2F) // Bold red for missed in Screenshot 3
+                            : (isDark ? Colors.white : Colors.black87),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          subtitleLabel,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.white54 : const Color(0xFF8E8E93),
+                          ),
+                        ),
+                        if (item.hasRecording) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppColors.endCallRed.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'REC',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.endCallRed,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Right side: Blue date (8/20/26) & Blue (i) info button
+              Text(
+                dateStr,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF007AFF), // Soft blue date from Screenshot 3
+                ),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: () => _showCallDetailsSheet(item, isDark),
+                child: const Icon(
+                  CupertinoIcons.info_circle,
+                  size: 22,
+                  color: Color(0xFF007AFF), // Soft blue (i) from Screenshot 3
+                ),
+              ),
+            ],
           ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
         ),
       ),
     );
