@@ -45,13 +45,14 @@ class AuraDockNavBar extends StatelessWidget {
     ];
 
     return SafeArea(
+      top: false,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
         child: Container(
-          height: 64,
+          height: 58,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            borderRadius: BorderRadius.circular(36),
+            borderRadius: BorderRadius.circular(30),
             border: Border.all(
               color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
               width: 1,

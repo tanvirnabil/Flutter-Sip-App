@@ -71,7 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 84),
+          padding: const EdgeInsets.only(bottom: 12),
           children: [
             _buildSettingsRow(
               icon: CupertinoIcons.person_2_fill,

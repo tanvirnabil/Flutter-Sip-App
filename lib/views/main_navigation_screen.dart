@@ -77,8 +77,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       });
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      extendBody: true,
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
+      extendBody: false,
       body: PageView(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(), // tab switching via dock

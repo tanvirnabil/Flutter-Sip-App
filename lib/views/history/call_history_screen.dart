@@ -378,7 +378,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                 ),
               )
             : ListView.separated(
-                padding: const EdgeInsets.only(bottom: 84),
+                padding: const EdgeInsets.only(bottom: 12),
                 itemCount: logs.length,
                 separatorBuilder: (context, index) => Divider(
                   height: 1,

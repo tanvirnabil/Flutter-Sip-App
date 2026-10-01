@@ -366,7 +366,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               children: [
                                 ListView.builder(
                                   controller: _scrollController,
-                                  padding: const EdgeInsets.only(bottom: 84),
+                                  padding: const EdgeInsets.only(bottom: 12),
                                   itemCount: contacts.length,
                                   itemBuilder: (context, index) {
                                     final contact = contacts[index];
@@ -391,7 +391,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                 // Right-side A-Z Jump Bar (thin 18px width)
                                 Positioned(
                                   top: 0,
-                                  bottom: 84,
+                                  bottom: 12,
                                   right: 2,
                                   child: Center(
                                     child: Container(

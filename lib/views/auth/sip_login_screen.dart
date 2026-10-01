@@ -1,13 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_typography.dart';
 import '../../core/utils/haptics.dart';
 import '../../models/sip_account.dart';
-import '../../services/sip_service.dart';
 import '../../providers/sip_provider.dart';
 import '../main_navigation_screen.dart';
+import '../widgets/app_logo.dart';
 
 class SipLoginScreen extends StatefulWidget {
   const SipLoginScreen({super.key});
@@ -30,6 +28,7 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
   bool _showAdvanced = false;
   bool _isWebRtc = false;
   String _transport = 'udp';
+  bool _isConnecting = false;
 
   @override
   void initState() {
@@ -69,13 +68,17 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
     Haptics.medium();
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _isConnecting = true);
+
     final port = int.tryParse(_portController.text.trim()) ?? (_isWebRtc ? 8089 : 5060);
 
     final account = SipAccount(
       extension: _extensionController.text.trim(),
       password: _passwordController.text.trim(),
       domain: _domainController.text.trim(),
-      displayName: _displayNameController.text.trim(),
+      displayName: _displayNameController.text.trim().isNotEmpty
+          ? _displayNameController.text.trim()
+          : 'SOHUB ${_extensionController.text.trim()}',
       port: port,
       isWebRtc: _isWebRtc,
       transport: _transport,
@@ -84,6 +87,8 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
 
     final sip = context.read<SipProvider>();
     await sip.register(account);
+
+    setState(() => _isConnecting = false);
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -96,335 +101,215 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final sip = context.watch<SipProvider>();
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Form(
               key: _formKey,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF007AFF), Color(0xFF00C6FF)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.accentBlue.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        CupertinoIcons.phone_fill,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                  // App Logo & Clean Softphone Branding
+                  const Center(child: AppLogo(size: 84)),
+                  const SizedBox(height: 20),
                   Text(
                     'Aura VoIP',
                     textAlign: TextAlign.center,
-                    style: AppTypography.title1.copyWith(
-                      color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                      color: isDark ? Colors.white : const Color(0xFF1C1C1E),
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Simple, secure SIP for Asterisk & FreePBX',
+                    'SIP & WebRTC Enterprise Softphone',
                     textAlign: TextAlign.center,
-                    style: AppTypography.subhead.copyWith(
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: isDark ? Colors.white54 : const Color(0xFF8E8E93),
                     ),
                   ),
                   const SizedBox(height: 32),
 
-                  _buildInputLabel('EXTENSION / USERNAME', isDark),
-                  TextFormField(
+                  // Extension / Username
+                  _buildSectionLabel('EXTENSION / USERNAME', isDark),
+                  _buildTextField(
                     controller: _extensionController,
+                    hint: 'e.g. 101 or 1001',
+                    icon: CupertinoIcons.person_crop_circle,
+                    isDark: isDark,
                     keyboardType: TextInputType.text,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. 1001 or tanvir',
-                      prefixIcon: Icon(CupertinoIcons.person_crop_circle),
-                    ),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Please enter your extension' : null,
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Enter your SIP extension' : null,
                   ),
                   const SizedBox(height: 16),
 
-                  _buildInputLabel('PASSWORD', isDark),
-                  TextFormField(
+                  // Password
+                  _buildSectionLabel('PASSWORD / SECRET', isDark),
+                  _buildTextField(
                     controller: _passwordController,
+                    hint: 'SIP Secret Password',
+                    icon: CupertinoIcons.lock,
+                    isDark: isDark,
                     obscureText: _obscurePassword,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                    decoration: InputDecoration(
-                      hintText: 'SIP Secret / Password',
-                      prefixIcon: const Icon(CupertinoIcons.lock_shield),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
-                          color: AppColors.lightTextSecondary,
-                        ),
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
+                        size: 20,
+                        color: isDark ? Colors.white54 : const Color(0xFF8E8E93),
                       ),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Please enter password' : null,
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Enter your password' : null,
                   ),
                   const SizedBox(height: 16),
 
-                  _buildInputLabel('DOMAIN / PBX HOST', isDark),
-                  TextFormField(
+                  // Domain / PBX Host
+                  _buildSectionLabel('DOMAIN / PBX SERVER', isDark),
+                  _buildTextField(
                     controller: _domainController,
+                    hint: 'e.g. sip.ranksitt.net or 192.168.1.100',
+                    icon: CupertinoIcons.globe,
+                    isDark: isDark,
                     keyboardType: TextInputType.url,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. pbx.yourcompany.com or 192.168.1.100',
-                      prefixIcon: Icon(CupertinoIcons.globe),
-                    ),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Please enter PBX host' : null,
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Enter PBX domain or IP' : null,
                   ),
                   const SizedBox(height: 16),
 
-                  _buildInputLabel('CALLER DISPLAY NAME (OPTIONAL)', isDark),
-                  TextFormField(
+                  // Caller Display Name
+                  _buildSectionLabel('CALLER DISPLAY NAME (OPTIONAL)', isDark),
+                  _buildTextField(
                     controller: _displayNameController,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. Tanvir Nabil',
-                      prefixIcon: Icon(CupertinoIcons.tag),
-                    ),
+                    hint: 'e.g. SOHUB 105 or Tanvir',
+                    icon: CupertinoIcons.tag,
+                    isDark: isDark,
+                    keyboardType: TextInputType.name,
                   ),
                   const SizedBox(height: 16),
 
-                  _buildInputLabel('CONNECTION PROTOCOL', isDark),
+                  // Connection Protocol Selector (UDP / TCP / WebRTC)
+                  _buildSectionLabel('CONNECTION PROTOCOL', isDark),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isDark ? AppColors.darkSurfaceSecondary : AppColors.lightSurfaceSecondary,
+                      color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F7),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: CupertinoSlidingSegmentedControl<bool>(
-                      groupValue: _isWebRtc,
+                    child: CupertinoSlidingSegmentedControl<String>(
+                      groupValue: _isWebRtc ? 'webrtc' : _transport,
                       backgroundColor: Colors.transparent,
-                      thumbColor: AppColors.accentBlue,
-                      children: {
-                        false: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          child: Text(
-                            'Standard SIP (UDP/TCP)',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: !_isWebRtc ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                            ),
-                          ),
+                      children: const {
+                        'udp': Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('UDP (Native)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                         ),
-                        true: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          child: Text(
-                            'WebRTC (WebSocket)',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _isWebRtc ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-                            ),
-                          ),
+                        'tcp': Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('TCP', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        ),
+                        'webrtc': Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('WebRTC (WS)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                         ),
                       },
                       onValueChanged: (val) {
-                        if (val != null) {
-                          Haptics.selection();
-                          setState(() {
-                            _isWebRtc = val;
-                            _portController.text = val ? '8089' : '5060';
-                            _transport = val ? 'wss' : 'udp';
-                          });
-                        }
+                        if (val == null) return;
+                        setState(() {
+                          if (val == 'webrtc') {
+                            _isWebRtc = true;
+                            _transport = 'ws';
+                            if (_portController.text == '5060') _portController.text = '8089';
+                          } else {
+                            _isWebRtc = false;
+                            _transport = val;
+                            if (_portController.text == '8089') _portController.text = '5060';
+                          }
+                        });
                       },
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
+                  // Advanced Settings Toggle
                   GestureDetector(
-                    onTap: () {
-                      Haptics.selection();
-                      setState(() => _showAdvanced = !_showAdvanced);
-                    },
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _showAdvanced ? 'Hide Advanced Settings' : 'Show Advanced Settings',
-                          style: const TextStyle(
-                            color: AppColors.accentBlue,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                        Icon(
-                          _showAdvanced ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down,
-                          color: AppColors.accentBlue,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (_showAdvanced) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isDark ? const Color(0x22FFFFFF) : const Color(0x15000000),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'WebRTC Mode',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 16,
-                                      color: isDark ? Colors.white : Colors.black,
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Recommended for Asterisk 16+ & FreePBX',
-                                    style: TextStyle(fontSize: 12, color: AppColors.lightTextSecondary),
-                                  ),
-                                ],
-                              ),
-                              CupertinoSwitch(
-                                value: _isWebRtc,
-                                activeTrackColor: AppColors.accentBlue,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _isWebRtc = val;
-                                    _portController.text = val ? '8089' : '5060';
-                                    _transport = val ? 'wss' : 'udp';
-                                  });
-                                },
-                              ),
-                            ],
+                          Icon(
+                            _showAdvanced ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right,
+                            size: 16,
+                            color: const Color(0xFF75B928),
                           ),
-                          const Divider(height: 24),
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildInputLabel('PORT', isDark),
-                                    TextFormField(
-                                      controller: _portController,
-                                      keyboardType: TextInputType.number,
-                                      style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 3,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildInputLabel('TRANSPORT', isDark),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                                      decoration: BoxDecoration(
-                                        color: isDark ? AppColors.darkSurfaceSecondary : AppColors.lightSurfaceSecondary,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: DropdownButtonHideUnderline(
-                                        child: DropdownButton<String>(
-                                          value: _transport,
-                                          isExpanded: true,
-                                          dropdownColor: isDark ? AppColors.darkSurface : Colors.white,
-                                          items: const [
-                                            DropdownMenuItem(value: 'udp', child: Text('UDP (Standard)')),
-                                            DropdownMenuItem(value: 'tcp', child: Text('TCP (Standard)')),
-                                            DropdownMenuItem(value: 'wss', child: Text('WSS (Secure WebRTC)')),
-                                            DropdownMenuItem(value: 'ws', child: Text('WS (Plain WebRTC)')),
-                                          ],
-                                          onChanged: (val) {
-                                            if (val != null) setState(() => _transport = val);
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          _buildInputLabel('STUN SERVER', isDark),
-                          TextFormField(
-                            controller: _stunController,
-                            style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Advanced Network Settings',
+                            style: TextStyle(
+                              color: Color(0xFF75B928),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ],
-
-                  const SizedBox(height: 28),
-
-                  ElevatedButton(
-                    onPressed: _handleConnect,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.callGreen,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                    child: Text(
-                      sip.status == SipConnectionStatus.connecting ? 'Connecting...' : 'Connect SIP Account',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
                   ),
 
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        CupertinoPageRoute(builder: (_) => const MainNavigationScreen()),
-                      );
-                    },
-                    child: const Text(
-                      'Open Softphone Workspace',
-                      style: TextStyle(color: AppColors.lightTextSecondary, fontSize: 14),
+                  // Collapsible Advanced Fields
+                  if (_showAdvanced) ...[
+                    const SizedBox(height: 12),
+                    _buildSectionLabel('SIP PORT', isDark),
+                    _buildTextField(
+                      controller: _portController,
+                      hint: '5060',
+                      icon: CupertinoIcons.number,
+                      isDark: isDark,
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 14),
+                    _buildSectionLabel('STUN / ICE SERVER', isDark),
+                    _buildTextField(
+                      controller: _stunController,
+                      hint: 'stun:stun.l.google.com:19302',
+                      icon: CupertinoIcons.shield,
+                      isDark: isDark,
+                      keyboardType: TextInputType.url,
+                    ),
+                  ],
+                  const SizedBox(height: 28),
+
+                  // Connect & Register Button
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF75B928),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: _isConnecting ? null : _handleConnect,
+                      child: _isConnecting
+                          ? const CupertinoActivityIndicator(color: Colors.white)
+                          : const Text(
+                              'Connect & Register',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -436,19 +321,65 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
     );
   }
 
-  Widget _buildInputLabel(String label, bool isDark) {
+  Widget _buildSectionLabel(String text, bool isDark) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 6),
+      padding: const EdgeInsets.only(bottom: 6, left: 4),
       child: Text(
-        label,
+        text,
         style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: isDark ? Colors.white54 : const Color(0xFF8E8E93),
+          letterSpacing: 0.8,
         ),
       ),
     );
   }
-}
 
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    required bool isDark,
+    bool obscureText = false,
+    TextInputType keyboardType = TextInputType.text,
+    Widget? suffixIcon,
+    String? Function(String?)? validator,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+          width: 0.8,
+        ),
+      ),
+      child: TextFormField(
+        controller: controller,
+        obscureText: obscureText,
+        keyboardType: keyboardType,
+        style: TextStyle(
+          fontSize: 15,
+          color: isDark ? Colors.white : Colors.black87,
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(
+            fontSize: 14,
+            color: isDark ? Colors.white38 : const Color(0xFF8E8E93),
+          ),
+          prefixIcon: Icon(
+            icon,
+            size: 20,
+            color: isDark ? Colors.white54 : const Color(0xFF8E8E93),
+          ),
+          suffixIcon: suffixIcon,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+        validator: validator,
+      ),
+    );
+  }
+}

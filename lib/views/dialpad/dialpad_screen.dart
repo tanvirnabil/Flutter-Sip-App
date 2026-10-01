@@ -265,7 +265,7 @@ class _DialpadScreenState extends State<DialpadScreen> {
 
             // Solid Green Call Button & Quick Video Action
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 76),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
               child: Row(
                 children: [
                   // Video Call Toggle
@@ -342,22 +342,27 @@ class _DialpadScreenState extends State<DialpadScreen> {
               Text(
                 digit,
                 style: TextStyle(
-                  fontSize: 34,
+                  fontSize: 36,
                   fontWeight: FontWeight.w200,
                   color: isDark ? Colors.white : const Color(0xFF2C2C2E),
                   height: 1.1,
                 ),
               ),
-              if (letters.isNotEmpty)
-                Text(
-                  letters,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w400,
-                    color: isDark ? Colors.white38 : const Color(0xFF8E8E93),
-                    letterSpacing: 1.2,
-                  ),
-                ),
+              const SizedBox(height: 2),
+              SizedBox(
+                height: 14,
+                child: letters.isNotEmpty
+                    ? Text(
+                        letters,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400,
+                          color: isDark ? Colors.white38 : const Color(0xFF8E8E93),
+                          letterSpacing: 1.2,
+                        ),
+                      )
+                    : null,
+              ),
             ],
           ),
         ),
