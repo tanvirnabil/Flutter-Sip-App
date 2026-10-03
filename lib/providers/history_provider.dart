@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/call_log_item.dart';
 import '../services/call_history_service.dart';
 
 class HistoryProvider extends ChangeNotifier {
   final CallHistoryService _historyService = CallHistoryService();
+  StreamSubscription<CallLogItem>? _logSubscription;
 
   List<CallLogItem> _logs = [];
   bool _isLoading = false;
@@ -21,6 +23,11 @@ class HistoryProvider extends ChangeNotifier {
 
   HistoryProvider() {
     loadLogs();
+    _logSubscription = _historyService.onNewLog.listen((newLog) {
+      _logs.removeWhere((l) => l.id == newLog.id);
+      _logs.insert(0, newLog);
+      notifyListeners();
+    });
   }
 
   void setFilter(int index) {
@@ -28,9 +35,11 @@ class HistoryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadLogs() async {
-    _isLoading = true;
-    notifyListeners();
+  Future<void> loadLogs({bool showLoading = true}) async {
+    if (showLoading) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     try {
       _logs = await _historyService.getAllLogs();
@@ -51,5 +60,10 @@ class HistoryProvider extends ChangeNotifier {
     _logs.clear();
     notifyListeners();
   }
-}
 
+  @override
+  void dispose() {
+    _logSubscription?.cancel();
+    super.dispose();
+  }
+}

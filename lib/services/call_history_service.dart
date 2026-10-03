@@ -47,9 +47,15 @@ class CallHistoryService {
     );
   }
 
+  final _logController = StreamController<CallLogItem>.broadcast();
+  Stream<CallLogItem> get onNewLog => _logController.stream;
+
   Future<int> insertCallLog(CallLogItem item) async {
     final db = await database;
-    return await db.insert('call_logs', item.toMap());
+    final id = await db.insert('call_logs', item.toMap());
+    final saved = item.copyWith(id: id);
+    _logController.add(saved);
+    return id;
   }
 
   Future<List<CallLogItem>> getAllLogs() async {

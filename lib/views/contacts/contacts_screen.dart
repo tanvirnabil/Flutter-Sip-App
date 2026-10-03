@@ -409,7 +409,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                                 style: const TextStyle(
                                                   fontSize: 9.5,
                                                   fontWeight: FontWeight.w700,
-                                                  color: Color(0xFFF58220), // Orange matching reference
+                                                  color: AppColors.brandPrimary,
                                                 ),
                                               ),
                                             ),

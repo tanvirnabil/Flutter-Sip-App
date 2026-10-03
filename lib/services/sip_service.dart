@@ -9,6 +9,8 @@ import 'audio_routing_service.dart';
 import 'background_service.dart';
 import 'callkit_service.dart';
 import 'video_settings_service.dart';
+import '../models/chat_message.dart';
+import 'chat_service.dart';
 
 enum SipConnectionStatus {
   disconnected,
@@ -449,8 +451,50 @@ class SipService implements SipUaHelperListener {
     }
   }
 
+  bool sendTextMessage(String target, String body) {
+    if (_currentAccount == null) return false;
+    final cleanDest = target.trim();
+    if (cleanDest.isEmpty || body.trim().isEmpty) return false;
+    final sipUri = cleanDest.contains('@') ? 'sip:$cleanDest' : 'sip:$cleanDest@${_currentAccount!.domain}';
+    try {
+      _helper.sendMessage(sipUri, body);
+      ChatService().saveMessage(
+        ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          remoteExtension: cleanDest,
+          message: body,
+          timestamp: DateTime.now(),
+          isOutgoing: true,
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
-  void onNewMessage(SIPMessageRequest msg) {}
+  void onNewMessage(SIPMessageRequest msg) {
+    try {
+      final remoteUri = msg.originator?.toString() ?? '';
+      final body = msg.request?.body?.toString() ?? '';
+      if (body.isNotEmpty) {
+        String ext = remoteUri;
+        if (ext.startsWith('sip:')) ext = ext.substring(4);
+        if (ext.contains('@')) ext = ext.split('@').first;
+
+        ChatService().saveMessage(
+          ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            remoteExtension: ext,
+            message: body,
+            timestamp: DateTime.now(),
+            isOutgoing: false,
+          ),
+        );
+      }
+    } catch (_) {}
+  }
 
   @override
   void onNewNotify(Notify ntf) {}

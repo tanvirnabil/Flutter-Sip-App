@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/utils/haptics.dart';
 import '../../models/sip_account.dart';
 import '../../providers/sip_provider.dart';
@@ -118,10 +119,10 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
                   const Center(child: AppLogo(size: 84)),
                   const SizedBox(height: 20),
                   Text(
-                    'Aura VoIP',
+                    'Clario',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 26,
+                      fontSize: 28,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.5,
                       color: isDark ? Colors.white : const Color(0xFF1C1C1E),
@@ -129,7 +130,7 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'SIP & WebRTC Enterprise Softphone',
+                    'Next-Gen VoIP & SIP Softphone',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -292,7 +293,7 @@ class _SipLoginScreenState extends State<SipLoginScreen> {
                     height: 52,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF75B928),
+                        backgroundColor: AppColors.brandPrimary,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(

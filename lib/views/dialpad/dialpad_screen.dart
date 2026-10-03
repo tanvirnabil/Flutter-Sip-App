@@ -103,10 +103,10 @@ class _DialpadScreenState extends State<DialpadScreen> {
     final isRegistered = sip.status == SipConnectionStatus.registered;
     final accountTitle = sip.account?.displayName.isNotEmpty == true
         ? sip.account!.displayName
-        : (sip.account?.extension.isNotEmpty == true ? 'SOHUB ${sip.account!.extension}' : 'SOHUB 105');
+        : (sip.account?.extension.isNotEmpty == true ? 'Clario ${sip.account!.extension}' : 'Clario');
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
+      backgroundColor: isDark ? const Color(0xFF0B0F19) : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -122,7 +122,7 @@ class _DialpadScreenState extends State<DialpadScreen> {
                       icon: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
@@ -145,7 +145,7 @@ class _DialpadScreenState extends State<DialpadScreen> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white : const Color(0xFF3A3A3C),
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -160,7 +160,7 @@ class _DialpadScreenState extends State<DialpadScreen> {
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: isRegistered
-                              ? const Color(0xFF6BB82D) // Vibrant green from screenshot
+                              ? AppColors.brandAccent
                               : (sip.status == SipConnectionStatus.connecting
                                   ? AppColors.warningOrange
                                   : AppColors.endCallRed),
@@ -274,13 +274,13 @@ class _DialpadScreenState extends State<DialpadScreen> {
                     width: 52,
                     margin: const EdgeInsets.only(right: 10),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: IconButton(
                       icon: const Icon(
                         CupertinoIcons.video_camera_solid,
-                        color: AppColors.accentBlue,
+                        color: AppColors.brandPrimary,
                         size: 24,
                       ),
                       tooltip: 'Video Call',
@@ -288,13 +288,13 @@ class _DialpadScreenState extends State<DialpadScreen> {
                     ),
                   ),
 
-                  // Full-Width Green "Call" Action Banner
+                  // Full-Width Luminous Mint "Call" Action Banner
                   Expanded(
                     child: SizedBox(
                       height: 52,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF75B928), // Bright green matching Screenshot 1
+                          backgroundColor: AppColors.brandAccent,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(

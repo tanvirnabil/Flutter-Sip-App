@@ -84,9 +84,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               child: Column(
                 children: [
                   Text(
-                    'Aura VoIP',
+                    'Clario',
                     style: TextStyle(
-                      fontSize: 26,
+                      fontSize: 28,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.5,
                       color: isDark ? Colors.white : const Color(0xFF1C1C1E),
@@ -94,7 +94,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Professional SIP & WebRTC Softphone',
+                    'Next-Gen VoIP & SIP Softphone',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
@@ -110,7 +110,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               opacity: _fadeAnimation,
               child: const CupertinoActivityIndicator(
                 radius: 13,
-                color: Color(0xFF75B928),
+                color: Color(0xFF0070F3),
               ),
             ),
           ],

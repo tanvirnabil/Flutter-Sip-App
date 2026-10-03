@@ -29,6 +29,11 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<HistoryProvider>().loadLogs(showLoading: false);
+      }
+    });
     _audioPlayer.onPositionChanged.listen((p) {
       if (mounted) setState(() => _position = p);
     });
@@ -339,7 +344,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
                     color: _isEditing
-                        ? const Color(0xFFF58220)
+                        ? AppColors.brandPrimary
                         : (isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7)),
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -510,13 +515,13 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                 ),
               ),
 
-              // Right side: Blue date (8/20/26) & Blue (i) info button
+              // Right side: Brand primary date & info button
               Text(
                 dateStr,
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w400,
-                  color: Color(0xFF007AFF), // Soft blue date from Screenshot 3
+                  color: AppColors.brandPrimary,
                 ),
               ),
               const SizedBox(width: 10),
@@ -525,7 +530,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                 child: const Icon(
                   CupertinoIcons.info_circle,
                   size: 22,
-                  color: Color(0xFF007AFF), // Soft blue (i) from Screenshot 3
+                  color: AppColors.brandPrimary,
                 ),
               ),
             ],

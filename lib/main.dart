@@ -47,22 +47,22 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ContactsProvider()),
         ChangeNotifierProvider(create: (_) => WalletProvider()),
       ],
-      child: AuraVoipApp(hasSavedAccount: savedAccount != null),
+      child: ClarioApp(hasSavedAccount: savedAccount != null),
     ),
   );
 }
 
-class AuraVoipApp extends StatelessWidget {
+class ClarioApp extends StatelessWidget {
   final bool hasSavedAccount;
 
-  const AuraVoipApp({super.key, required this.hasSavedAccount});
+  const ClarioApp({super.key, required this.hasSavedAccount});
 
   @override
   Widget build(BuildContext context) {
     final themeProv = context.watch<ThemeProvider>();
 
     return MaterialApp(
-      title: 'Aura VoIP',
+      title: 'Clario',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: themeProv.isOled ? AppTheme.oledTheme : AppTheme.darkTheme,
@@ -71,4 +71,7 @@ class AuraVoipApp extends StatelessWidget {
     );
   }
 }
+
+// Backward compatibility alias for widget tests
+typedef AuraVoipApp = ClarioApp;
 

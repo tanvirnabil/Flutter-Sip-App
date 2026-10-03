@@ -117,6 +117,10 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
     _sipService.sendDTMF(tone);
   }
 
+  bool sendTextMessage(String target, String body) {
+    return _sipService.sendTextMessage(target, body);
+  }
+
   Future<void> switchCamera() async {
     await _sipService.switchCamera();
   }
@@ -154,6 +158,13 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
     final previousStatus = _session?.status;
     _session = session;
 
+    if (_callStartTime == null &&
+        (session.status == AuraCallStatus.connecting ||
+            session.status == AuraCallStatus.ringing ||
+            session.status == AuraCallStatus.active)) {
+      _callStartTime = session.startedAt ?? DateTime.now();
+    }
+
     if (session.status == AuraCallStatus.active && previousStatus != AuraCallStatus.active) {
       _startTimer();
       // Auto-start recording if enabled in settings
@@ -163,7 +174,9 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
     } else if (session.status == AuraCallStatus.ended) {
       _stopTimer();
       final recordingPath = await CallRecordingService().stopRecording();
-      _saveCallLog(session, recordingPath: recordingPath);
+      await _saveCallLog(session, recordingPath: recordingPath);
+      _callStartTime = null;
+      _callDuration = 0;
     }
 
     notifyListeners();
@@ -174,9 +187,13 @@ class SipProvider extends ChangeNotifier implements SipServiceListener {
         ? CallLogType.outgoing
         : (_callDuration > 0 ? CallLogType.incoming : CallLogType.missed);
 
+    final rawTarget = session.targetNumber.trim();
+    final target = rawTarget.isNotEmpty ? rawTarget : 'Unknown';
+    final name = session.targetName.isNotEmpty ? session.targetName : target;
+
     final log = CallLogItem(
-      phoneNumber: session.targetNumber,
-      displayName: session.targetName,
+      phoneNumber: target,
+      displayName: name,
       type: type,
       timestamp: _callStartTime ?? DateTime.now(),
       durationSeconds: _callDuration,

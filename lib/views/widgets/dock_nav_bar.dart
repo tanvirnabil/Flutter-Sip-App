@@ -1,12 +1,13 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/utils/haptics.dart';
 
-class AuraDockNavBar extends StatelessWidget {
+class ClarioDockNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  const AuraDockNavBar({
+  const ClarioDockNavBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
@@ -17,27 +18,27 @@ class AuraDockNavBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final items = [
-      _DockItem(
+      const _DockItem(
         icon: CupertinoIcons.circle_grid_3x3_fill,
         outlineIcon: CupertinoIcons.circle_grid_3x3,
         label: 'Dialpad',
       ),
-      _DockItem(
+      const _DockItem(
         icon: CupertinoIcons.person_crop_circle_fill,
         outlineIcon: CupertinoIcons.person_crop_circle,
         label: 'Contacts',
       ),
-      _DockItem(
+      const _DockItem(
         icon: CupertinoIcons.clock_fill,
         outlineIcon: CupertinoIcons.clock,
         label: 'History',
       ),
-      _DockItem(
+      const _DockItem(
         icon: CupertinoIcons.bubble_left_bubble_right_fill,
         outlineIcon: CupertinoIcons.bubble_left_bubble_right,
-        label: 'Chat',
+        label: 'Messages',
       ),
-      _DockItem(
+      const _DockItem(
         icon: CupertinoIcons.gear_alt_fill,
         outlineIcon: CupertinoIcons.gear_alt,
         label: 'Settings',
@@ -49,12 +50,12 @@ class AuraDockNavBar extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
         child: Container(
-          height: 58,
+          height: 60,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            color: isDark ? AppColors.darkSurface : Colors.white,
             borderRadius: BorderRadius.circular(30),
             border: Border.all(
-              color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+              color: isDark ? AppColors.darkDivider : AppColors.lightDivider,
               width: 1,
             ),
             boxShadow: [
@@ -82,15 +83,24 @@ class AuraDockNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
+                        duration: const Duration(milliseconds: 220),
                         curve: Curves.easeOutCubic,
                         width: isSelected ? 48 : 36,
                         height: 32,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFFF58220) // Orange highlight matching reference
+                              ? AppColors.brandPrimary
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(16),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.brandPrimary.withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
                         ),
                         alignment: Alignment.center,
                         child: Icon(
@@ -98,19 +108,35 @@ class AuraDockNavBar extends StatelessWidget {
                           size: isSelected ? 20 : 21,
                           color: isSelected
                               ? Colors.white
-                              : (isDark ? Colors.white60 : const Color(0xFF636366)),
+                              : (isDark ? Colors.white60 : const Color(0xFF64748B)),
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: isSelected
-                              ? const Color(0xFFF58220)
-                              : (isDark ? Colors.white60 : const Color(0xFF636366)),
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSelected) ...[
+                            Container(
+                              width: 4,
+                              height: 4,
+                              margin: const EdgeInsets.only(right: 3),
+                              decoration: const BoxDecoration(
+                                color: AppColors.brandAccent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                          Text(
+                            item.label,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              color: isSelected
+                                  ? AppColors.brandPrimary
+                                  : (isDark ? Colors.white60 : const Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -123,6 +149,9 @@ class AuraDockNavBar extends StatelessWidget {
     );
   }
 }
+
+// Backward compatible alias
+typedef AuraDockNavBar = ClarioDockNavBar;
 
 class _DockItem {
   final IconData icon;
